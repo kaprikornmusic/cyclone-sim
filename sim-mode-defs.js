@@ -1091,28 +1091,33 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     // Run the standard intensity physics first.
     STORM_ALGORITHM.defaults.core(sys,u);
 
-    // Give tropical waves a modest development assist only when the
-    // surrounding environment is genuinely favorable.
-    if(sys.type===TROPWAVE && !u.land()){
+    // Help both tropical waves and weak tropical depressions consolidate in
+    // genuinely favorable environments. The boost still collapses to zero
+    // with cool SSTs, dry air, or strong shear.
+    let developingTropical =
+        sys.type===TROPWAVE ||
+        (sys.type===TROP && sys.windSpeed<34);
+
+    if(developingTropical && !u.land()){
         let SST = u.f("SST");
         let moisture = u.f("moisture");
         let shear = u.f("shear").mag()+sys.interaction.shear;
 
         let favorability =
-            map(SST,25,29.5,0,1,true) *
-            map(moisture,0.45,0.75,0,1,true) *
-            map(shear,18,5,0,1,true);
+            map(SST,24.5,29.5,0,1,true) *
+            map(moisture,0.42,0.75,0,1,true) *
+            map(shear,20,5,0,1,true);
 
         if(favorability>0){
+            let stageFactor = sys.type===TROPWAVE ? 1 : 0.75;
+
             sys.organization = constrain(
-                sys.organization + 0.008*favorability,
+                sys.organization + 0.010*favorability*stageFactor,
                 0,1
             );
 
-            // Moderate pressure/wind support helps a favorable disturbance
-            // reach depression/storm strength without guaranteeing genesis.
-            sys.pressure -= 0.18*favorability;
-            sys.windSpeed += 0.12*favorability;
+            sys.pressure -= 0.22*favorability*stageFactor;
+            sys.windSpeed += 0.18*favorability*stageFactor;
         }
     }
 };
@@ -1203,19 +1208,29 @@ STORM_ALGORITHM[SIM_MODE_EXPERIMENTAL].core = function(sys,u){
 // -- Type Determination -- //
 
 STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
-    if(sys.type!==TROPWAVE){
-        STORM_ALGORITHM.defaults.typeDetermination(sys,u);
+    if(sys.type===TROPWAVE){
+        // Let a sufficiently organized warm-core wave become a depression
+        // somewhat earlier than the generic algorithm.
+        sys.type =
+            sys.lowerWarmCore<0.53 ? EXTROP :
+            (sys.organization<0.34 || sys.windSpeed<21) ?
+                (sys.upperWarmCore<0.50 ? EXTROP : TROPWAVE) :
+                (sys.upperWarmCore<0.50 ? SUBTROP : TROP);
         return;
     }
 
-    // Normal-mode tropical waves can become a tropical/subtropical cyclone
-    // a little earlier than the generic algorithm, while still requiring a
-    // warm core, organized circulation, and sufficient wind.
-    sys.type =
-        sys.lowerWarmCore<0.55 ? EXTROP :
-        (sys.organization<0.36 || sys.windSpeed<22) ?
-            (sys.upperWarmCore<0.52 ? EXTROP : TROPWAVE) :
-            (sys.upperWarmCore<0.52 ? SUBTROP : TROP);
+    if(sys.type===TROP){
+        // Prevent newly formed tropical depressions from immediately bouncing
+        // back to TROPWAVE before they have a chance to reach storm strength.
+        sys.type =
+            sys.lowerWarmCore<0.53 ? EXTROP :
+            ((sys.organization<0.34 && sys.windSpeed<45) || sys.windSpeed<18) ?
+                (sys.upperWarmCore<0.50 ? EXTROP : TROPWAVE) :
+                (sys.upperWarmCore<0.50 ? SUBTROP : TROP);
+        return;
+    }
+
+    STORM_ALGORITHM.defaults.typeDetermination(sys,u);
 };
 
 STORM_ALGORITHM.defaults.typeDetermination = function(sys,u){

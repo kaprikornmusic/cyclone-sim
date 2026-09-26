@@ -304,6 +304,38 @@ class Storm{
                         let nextPos = this.record[n+1].pos;
                         tracks.line(pos.x,pos.y,nextPos.x,nextPos.y);
                     }
+
+                    if(selectedStorm===this){
+                        tracks.push();
+                        tracks.textSize(9);
+                        tracks.textStyle(NORMAL);
+                        tracks.fill(255);
+                        tracks.stroke(0);
+                        tracks.strokeWeight(3);
+
+                        for(let n=0;n<this.record.length;n++){
+                            let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
+                            if(simSettings.trackMode!==1){
+                                if(t<this.formationTime) continue;
+                                if(t>this.dissipationTime) break;
+                            }
+
+                            let adv = this.record[n];
+                            let pos = adv.pos;
+                            let label = adv.coord().format(1);
+                            let drawLeft = pos.x > WIDTH-90;
+                            let labelX = pos.x + (drawLeft ? -6 : 6);
+                            let labelY = pos.y + (n%2===0 ? -8 : 8);
+
+                            if(pos.y<12) labelY = pos.y+8;
+                            else if(pos.y>HEIGHT-12) labelY = pos.y-8;
+
+                            tracks.textAlign(drawLeft ? RIGHT : LEFT,CENTER);
+                            tracks.text(label,labelX,labelY);
+                        }
+
+                        tracks.pop();
+                    }
                 }
             }
             if(selectedStorm===this && this.basin.viewingPresent() && this.current){

@@ -286,7 +286,7 @@ class Basin{
     }
 
     spawn(data){
-        // In Normal mode, tropical waves/lows weaker than roughly 25 mph are
+        // In Normal mode, tropical waves/lows weaker than roughly 20 mph are
         // discarded immediately instead of entering the active simulation.
         if(
             this.actMode===SIM_MODE_NORMAL &&

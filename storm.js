@@ -1178,7 +1178,7 @@ class ActiveSystem extends StormData{
             STORM_ALGORITHM.defaults.typeDetermination(this,u);
 
         // Hard cutoff for Normal mode: dissipate immediately in the same tick
-        // that a tropical wave/low falls below 25 mph.
+        // that a tropical wave/low falls below 20 mph.
         if(
             basin.actMode===SIM_MODE_NORMAL &&
             this.type===TROPWAVE &&

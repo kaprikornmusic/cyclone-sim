@@ -346,6 +346,38 @@ class Storm{
                 tracks.pop();
             };
 
+            // Season Summary uses the storm's complete advisory record from
+            // birth onward. This deliberately bypasses the live-track gates so
+            // precursor tropical-wave points are never dropped. After the
+            // system has once become tropical/subtropical, stop immediately
+            // before the first EXTROP advisory; remnant TROPWAVE records remain.
+            if(simSettings.trackMode===2){
+                let seenCyclone = false;
+                let lastPoint = -1;
+
+                for(let n=0;n<this.record.length;n++){
+                    let adv = this.record[n];
+
+                    if(tropOrSub(adv.type))
+                        seenCyclone = true;
+
+                    if(seenCyclone && adv.type===EXTROP)
+                        break;
+
+                    lastPoint = n;
+                }
+
+                if(lastPoint>=0){
+                    for(let n=0;n<lastPoint;n++)
+                        drawTrackLine(this.record[n].pos,this.record[n+1].pos);
+
+                    for(let n=0;n<=lastPoint;n++)
+                        drawTrackPoint(this.record[n]);
+                }
+
+                return;
+            }
+
             const isPostTropicalRecord = (adv,t)=>{
                 return (
                     this.TC &&

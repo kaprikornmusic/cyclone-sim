@@ -48,6 +48,18 @@ class Storm{
         return t >= this.birthTime && (!!this.current || t < this.deathTime);
     }
 
+    reachedTropicalStorm(){
+        if(this.current && this.current.type===TROP && this.current.windSpeed>=34)
+            return true;
+
+        for(let d of this.record){
+            if(d.type===TROP && d.windSpeed>=34)
+                return true;
+        }
+
+        return false;
+    }
+
     getStormDataByTick(t,allowCurrent){
         if(!this.aliveAt(t)) return null;
         if(t===this.basin.tick){
@@ -279,6 +291,12 @@ class Storm{
     }
 
     renderTrack(newestSegment){
+        // Season Summary should contain only systems that actually reached
+        // tropical-storm strength. Waves/depressions that never reached
+        // 34 kt as a fully tropical cyclone stay out of the summary map.
+        if(simSettings.trackMode===2 && !this.reachedTropicalStorm())
+            return;
+
         if(simSettings.trackMode!==3){
             const drawTrackLine = (a,b)=>{
                 tracks.push();

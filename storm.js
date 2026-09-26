@@ -248,24 +248,12 @@ class Storm{
                 if(ty===EXTROP){
                     stormIcons.textSize(18);
                     stormIcons.text("L",0,0);
-                }else if(ty===TROPWAVE){
-                    stormIcons.triangle(
-                        0,-DIAMETER*0.6,
-                        -DIAMETER*0.55,DIAMETER*0.45,
-                        DIAMETER*0.55,DIAMETER*0.45
-                    );
                 }else stormIcons.ellipse(0,0,DIAMETER);
                 drawArms();
             }
             stormIcons.fill(scaleIconData.color);
             stormIcons.noStroke();
-            if(ty===TROPWAVE){
-                stormIcons.triangle(
-                    0,-DIAMETER*0.6,
-                    -DIAMETER*0.55,DIAMETER*0.45,
-                    DIAMETER*0.55,DIAMETER*0.45
-                );
-            }else if(ty!==EXTROP) stormIcons.ellipse(0,0,DIAMETER);
+            if(ty!==EXTROP) stormIcons.ellipse(0,0,DIAMETER);
             drawArms();
             if(ty===EXTROP){
                 stormIcons.fill(COLORS.storm.extL);
@@ -303,11 +291,10 @@ class Storm{
             const drawTrackPoint = (adv)=>{
                 let pos = adv.pos;
                 let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
-                const r = 4;
+                const r = 3;
 
                 tracks.push();
-                tracks.stroke(0);
-                tracks.strokeWeight(1);
+                tracks.noStroke();
                 tracks.fill(col);
 
                 switch(adv.type){
@@ -329,13 +316,8 @@ class Storm{
                         tracks.ellipse(pos.x,pos.y,r*2,r*2);
                         break;
                     case EXTROP:
-                        // Extratropical phase: small plus, keeping every
-                        // six-hour advisory visible without reusing a TC shape.
+                        // Pre-tropical extratropical phase: small white plus.
                         tracks.noFill();
-                        tracks.stroke(0);
-                        tracks.strokeWeight(3);
-                        tracks.line(pos.x-r,pos.y,pos.x+r,pos.y);
-                        tracks.line(pos.x,pos.y-r,pos.x,pos.y+r);
                         tracks.stroke(255);
                         tracks.strokeWeight(1);
                         tracks.line(pos.x-r,pos.y,pos.x+r,pos.y);
@@ -344,6 +326,15 @@ class Storm{
                 }
 
                 tracks.pop();
+            };
+
+            const isPostTropicalRecord = (adv,t)=>{
+                return (
+                    this.TC &&
+                    this.formationTime!==undefined &&
+                    t>=this.formationTime &&
+                    adv.type===EXTROP
+                );
             };
 
             const activeTropicalWave =
@@ -358,10 +349,10 @@ class Storm{
                         let adv = this.record[this.record.length-2];
                         let nextAdv = this.record[this.record.length-1];
 
-                        // Once a system becomes a TC, retain its earlier
-                        // tropical-wave/low track instead of starting the line
-                        // only at formation time.
-                        if(simSettings.trackMode===1 || (!this.dissipationTime || t<this.dissipationTime)){
+                        // Keep precursor and remnant-low track segments, but stop
+                        // before the first post-tropical/extratropical advisory.
+                        let nextT = t + ADVISORY_TICKS;
+                        if(!isPostTropicalRecord(adv,t) && !isPostTropicalRecord(nextAdv,nextT)){
                             drawTrackLine(adv.pos,nextAdv.pos);
                             drawTrackPoint(adv);
                             drawTrackPoint(nextAdv);
@@ -374,10 +365,16 @@ class Storm{
                     // sit cleanly on top.
                     for(let n=0;n<this.record.length-1;n++){
                         let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                        if(simSettings.trackMode!==1 && this.dissipationTime && t>=this.dissipationTime)
+                        let nextT = t + ADVISORY_TICKS;
+                        let adv = this.record[n];
+                        let nextAdv = this.record[n+1];
+
+                        // Remnant lows are TROPWAVE and remain on the track.
+                        // Stop only when the cyclone becomes post-tropical EXTROP.
+                        if(isPostTropicalRecord(adv,t) || isPostTropicalRecord(nextAdv,nextT))
                             break;
 
-                        drawTrackLine(this.record[n].pos,this.record[n+1].pos);
+                        drawTrackLine(adv.pos,nextAdv.pos);
                         lastPoint = n+1;
                     }
 
@@ -399,10 +396,10 @@ class Storm{
 
                         for(let n=0;n<this.record.length;n++){
                             let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                            if(simSettings.trackMode!==1 && this.dissipationTime && t>this.dissipationTime)
+                            let adv = this.record[n];
+                            if(isPostTropicalRecord(adv,t))
                                 break;
 
-                            let adv = this.record[n];
                             let pos = adv.pos;
                             let label = adv.coord().format(1);
                             let drawLeft = pos.x > WIDTH-90;

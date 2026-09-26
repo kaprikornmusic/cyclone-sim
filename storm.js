@@ -219,10 +219,9 @@ class Storm{
             let name = this.getNameByTick(viewTick);
             let timestamp = performance.now();
 
-            // Keep very weak tropical waves/lows in the simulation, but hide
-            // their map icons until they reach roughly 25 mph. This reduces
-            // map clutter without preventing a disturbance from developing.
-            if(ty===TROPWAVE && st<TROPWAVE_VISIBLE_WIND_THRESHOLD){
+            // Normal-mode waves below this threshold are removed by Basin.
+            // Keep the rendering guard for loaded/legacy states and other modes.
+            if(ty===TROPWAVE && st<TROPWAVE_MIN_WIND_THRESHOLD){
                 this.rotationUpdateTimestamp = timestamp;
                 return;
             }
@@ -292,10 +291,10 @@ class Storm{
                 !this.TC &&
                 viewData &&
                 viewData.type===TROPWAVE &&
-                viewData.windSpeed<TROPWAVE_VISIBLE_WIND_THRESHOLD;
+                viewData.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD;
 
-            // Weak tropical waves remain active in the simulation, but their
-            // icons/tracks stay hidden until they become a meaningful system.
+            // Normal-mode weak waves are removed from the active simulation;
+            // this guard also keeps loaded/legacy weak-wave tracks uncluttered.
             if(hiddenWeakWave && selectedStorm!==this)
                 return;
 

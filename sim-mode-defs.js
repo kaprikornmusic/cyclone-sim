@@ -1271,6 +1271,18 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
             return;
         }
 
+        // After the first depression advisory, keep a 12-hour hysteresis
+        // window unless the warm core clearly collapses.
+        if(
+            storm &&
+            storm.formationTime!==undefined &&
+            sys.basin.tick-storm.formationTime<ADVISORY_TICKS*2 &&
+            sys.lowerWarmCore>=0.48
+        ){
+            sys.type = sys.upperWarmCore<0.48 ? SUBTROP : TROP;
+            return;
+        }
+
         // Hysteresis: a developed depression must deteriorate more clearly
         // before it is allowed to fall back to a tropical wave.
         sys.type =
@@ -1278,6 +1290,25 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
             ((sys.organization<0.30 && sys.windSpeed<40) || sys.windSpeed<18) ?
                 (sys.upperWarmCore<0.48 ? EXTROP : TROPWAVE) :
                 (sys.upperWarmCore<0.48 ? SUBTROP : TROP);
+        return;
+    }
+
+    if(sys.type===EXTROP){
+        // Normal-mode frontal/non-tropical lows must pass through a visible
+        // subtropical or tropical-wave/low stage instead of jumping directly
+        // from EXTROP to a tropical depression.
+        if(sys.lowerWarmCore<0.55){
+            sys.type = EXTROP;
+            return;
+        }
+
+        let organized = sys.organization>=0.36 && sys.windSpeed>=22;
+
+        if(sys.upperWarmCore<0.50)
+            sys.type = organized ? SUBTROP : EXTROP;
+        else
+            sys.type = TROPWAVE;
+
         return;
     }
 

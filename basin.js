@@ -136,6 +136,26 @@ class Basin{
             metadata.needForceTrackRefresh = curSeason!==vs;
         }
         this.env.wobble();    // random change in environment for future forecast realism
+
+        // Remove weak Normal-mode tropical waves before interaction, steering,
+        // environmental sampling, or intensity calculations are performed.
+        if(this.actMode===SIM_MODE_NORMAL){
+            for(let i=this.activeSystems.length-1;i>=0;i--){
+                let sys = this.activeSystems[i];
+                if(sys.type===TROPWAVE && sys.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD){
+                    let storm = sys.fetchStorm();
+                    storm.deathTime = this.tick;
+                    if(storm.TC && storm.dissipationTime===undefined)
+                        storm.dissipationTime = this.tick;
+                    if(storm.inBasinTC && storm.exitTime===undefined)
+                        storm.exitTime = this.tick;
+                    storm.current = undefined;
+                    this.activeSystems.splice(i,1);
+                    metadata.needTrackRefresh = true;
+                }
+            }
+        }
+
         for(let i=0;i<this.activeSystems.length;i++){   // update active storm systems
             for(let j=i+1;j<this.activeSystems.length;j++){
                 this.activeSystems[i].interact(this.activeSystems[j],true);
@@ -239,6 +259,16 @@ class Basin{
     }
 
     spawn(data){
+        // In Normal mode, tropical waves/lows weaker than roughly 25 mph are
+        // discarded immediately instead of entering the active simulation.
+        if(
+            this.actMode===SIM_MODE_NORMAL &&
+            data &&
+            data.type===TROPWAVE &&
+            data.windSpeed!==undefined &&
+            data.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD
+        ) return;
+
         this.activeSystems.push(new ActiveSystem(this,data));
     }
 

@@ -1483,7 +1483,8 @@ UI.init = function(){
                 let sWind = sData ? sData.windSpeed : 0;
                 sWind = displayWindspeed(sWind);
                 let sPrsr = sData ? sData.pressure: 1031;
-                txtStr = `${sName}: ${sWind} / ${sPrsr} hPa`;
+                let sCoord = sData.coord().format(1);
+                txtStr = `${sName}: ${sWind} / ${sPrsr} hPa | ${sCoord}`;
             }else{
                 sName = selectedStorm.getFullNameByTick("peak");
                 txtStr = sName + " - ACE: " + selectedStorm.ACE;

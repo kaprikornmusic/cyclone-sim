@@ -28,6 +28,14 @@ class Coordinate{
         return Math.hypot(long_dist, lat_dist);
     }
 
+    format(precision = 1){
+        let lat = Math.abs(this.latitude).toFixed(precision);
+        let long = Math.abs(this.longitude).toFixed(precision);
+        let latHem = this.latitude >= 0 ? 'N' : 'S';
+        let longHem = this.longitude >= 0 ? 'E' : 'W';
+        return `${lat}°${latHem} ${long}°${longHem}`;
+    }
+
     static convertFromXY(mapType, x, y){
         if(x instanceof p5.Vector)
             ({x, y} = x);

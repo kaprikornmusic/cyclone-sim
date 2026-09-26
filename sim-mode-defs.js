@@ -1209,6 +1209,23 @@ STORM_ALGORITHM[SIM_MODE_EXPERIMENTAL].core = function(sys,u){
 
 STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     if(sys.type===TROPWAVE){
+        let storm = sys.fetchStorm();
+        let initialWaveStage =
+            storm &&
+            !storm.TC &&
+            (
+                sys.basin.tick-storm.birthTime<ADVISORY_TICKS ||
+                !storm.record.some(d=>d.type===TROPWAVE)
+            );
+
+        // A newly spawned tropical wave must remain a wave for at least one
+        // full six-hour advisory cycle. This prevents a favorable disturbance
+        // from appearing on the map for the first time as a depression.
+        if(initialWaveStage && sys.lowerWarmCore>=0.53){
+            sys.type = TROPWAVE;
+            return;
+        }
+
         // Let a sufficiently organized warm-core wave become a depression
         // somewhat earlier than the generic algorithm.
         sys.type =

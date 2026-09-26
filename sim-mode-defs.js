@@ -216,8 +216,8 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // around 20-30N rather than relying only on tropical transition.
     'atl_northlow': {
         inherit: 'tw',
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-80,-32),29).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-56,random(24,37)).y,
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-80,-30),31).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-55,random(26,41)).y,
         pressure: [997,1011],
         windSpeed: [23,37],
         organization: [0.36,0.62],
@@ -244,8 +244,12 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // These are deliberately closer to a warm-core transition than ordinary
     // extratropical cyclones, making subtropical genesis north of 25N possible.
     'atl_subtrop': {
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-78,-32),31).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-55,random(25,38)).y,
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-76,-28),34).x,
+        y: (b)=>Coordinate.convertToXY(
+            b.mapType,
+            -52,
+            random()<0.38 ? random(35,45) : random(26,38)
+        ).y,
         pressure: [997,1012],
         windSpeed: [22,37],
         type: EXTROP,
@@ -1104,15 +1108,21 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     // Favorable oceanic lows can progressively warm their core, become
     // shallower, organize, and transition into a Tropical Wave/Low.
     if(sys.type===EXTROP){
-        let transitionFavorability =
-            map(SST,june ? 21.8 : 22.8,28.5,0,1,true) *
-            map(moisture,0.30,0.68,0,1,true) *
-            map(shear,june ? 28 : 25,6,0,1,true) *
-            map(latitude,15,40,0.95,1.35,true);
+        let transitionSstFloor =
+            latitude>=35 ? (june ? 18.8 : 19.8) : (june ? 21.8 : 22.8);
+        let transitionShearCeiling =
+            latitude>=35 ? (june ? 32 : 30) : (june ? 28 : 25);
 
+        let transitionFavorability =
+            map(SST,transitionSstFloor,28.5,0,1,true) *
+            map(moisture,latitude>=35 ? 0.27 : 0.30,0.68,0,1,true) *
+            map(shear,transitionShearCeiling,6,0,1,true) *
+            map(latitude,15,45,0.95,1.65,true);
+
+        let highLatTransitionBoost = map(latitude,32,45,1,1.45,true);
         transitionFavorability = min(
-            june ? 2.10 : 1.60,
-            transitionFavorability*(june ? 1.80 : 1.20)
+            june ? 2.35 : 1.95,
+            transitionFavorability*(june ? 1.80 : 1.20)*highLatTransitionBoost
         );
 
         if(transitionFavorability>0){
@@ -1140,10 +1150,46 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         }
     }
 
+    // Favorable systems in the 35-45N band retain a shallow warm core long
+    // enough to complete tropical transition instead of being immediately
+    // stripped back to extratropical structure by the jet-stream term.
+    if(
+        latitude>=35 &&
+        latitude<=45 &&
+        (sys.type===TROPWAVE || sys.type===TROP || sys.type===SUBTROP)
+    ){
+        let highLatWarmCore =
+            map(SST,19,25.5,0,1,true) *
+            map(moisture,0.28,0.65,0,1,true) *
+            map(shear,32,7,0,1,true);
+
+        if(highLatWarmCore>0){
+            sys.lowerWarmCore = lerp(
+                sys.lowerWarmCore,
+                max(sys.lowerWarmCore,0.82),
+                0.030*highLatWarmCore
+            );
+            sys.upperWarmCore = lerp(
+                sys.upperWarmCore,
+                max(sys.lowerWarmCore,0.72),
+                0.034*highLatWarmCore
+            );
+            sys.organization = constrain(
+                sys.organization + 0.005*highLatWarmCore,
+                0,1
+            );
+            sys.depth = lerp(sys.depth,0.20,0.012*highLatWarmCore);
+        }
+    }
+
     if(sys.type===TROPWAVE){
         // Keep the current wave -> depression balance unchanged.
-        let sstFloor = latitude>=24 ? 22.5 : 24.2;
-        let shearCeiling = latitude>=24 ? 25 : 21;
+        let sstFloor =
+            latitude>=35 ? 19.5 :
+            latitude>=24 ? 22.5 : 24.2;
+        let shearCeiling =
+            latitude>=35 ? 30 :
+            latitude>=24 ? 25 : 21;
 
         if(june){
             sstFloor -= 1.0;
@@ -1156,7 +1202,7 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             map(shear,shearCeiling,5,0,1,true);
 
         let juneBoost = june ? 2.25 : 1;
-        let northBoost = map(latitude,20,38,1,1.60,true);
+        let northBoost = map(latitude,20,45,1,1.90,true);
 
         favorability = min(
             june ? 2.25 : 1.75,
@@ -1175,8 +1221,12 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         // Depression-only consolidation assist. Once genesis has occurred,
         // a coherent tropical depression can continue strengthening in a
         // somewhat broader range of moisture/shear than a precursor wave.
-        let tdSstFloor = latitude>=24 ? 21.8 : 23.5;
-        let tdShearCeiling = latitude>=24 ? 28 : 24;
+        let tdSstFloor =
+            latitude>=35 ? 19.0 :
+            latitude>=24 ? 21.8 : 23.5;
+        let tdShearCeiling =
+            latitude>=35 ? 33 :
+            latitude>=24 ? 28 : 24;
 
         if(june){
             tdSstFloor -= 0.8;
@@ -1189,7 +1239,7 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             map(shear,tdShearCeiling,5,0,1,true);
 
         let juneTdBoost = june ? 1.55 : 1;
-        let northTdBoost = map(latitude,20,38,1,1.35,true);
+        let northTdBoost = map(latitude,20,45,1,1.65,true);
         tdFavorability = min(
             june ? 1.95 : 1.55,
             tdFavorability*juneTdBoost*northTdBoost

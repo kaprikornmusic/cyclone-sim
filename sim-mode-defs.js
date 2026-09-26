@@ -1140,11 +1140,8 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         }
     }
 
-    let developingTropical =
-        sys.type===TROPWAVE ||
-        (sys.type===TROP && sys.windSpeed<34);
-
-    if(developingTropical){
+    if(sys.type===TROPWAVE){
+        // Keep the current wave -> depression balance unchanged.
         let sstFloor = latitude>=24 ? 22.5 : 24.2;
         let shearCeiling = latitude>=24 ? 25 : 21;
 
@@ -1167,14 +1164,50 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         );
 
         if(favorability>0){
-            let stageFactor = sys.type===TROPWAVE ? 1 : 0.82;
-
             sys.organization = constrain(
-                sys.organization + 0.013*favorability*stageFactor,
+                sys.organization + 0.013*favorability,
                 0,1
             );
-            sys.pressure -= 0.30*favorability*stageFactor;
-            sys.windSpeed += 0.26*favorability*stageFactor;
+            sys.pressure -= 0.30*favorability;
+            sys.windSpeed += 0.26*favorability;
+        }
+    }else if(sys.type===TROP && sys.windSpeed<34){
+        // Depression-only consolidation assist. Once genesis has occurred,
+        // a coherent tropical depression can continue strengthening in a
+        // somewhat broader range of moisture/shear than a precursor wave.
+        let tdSstFloor = latitude>=24 ? 21.8 : 23.5;
+        let tdShearCeiling = latitude>=24 ? 28 : 24;
+
+        if(june){
+            tdSstFloor -= 0.8;
+            tdShearCeiling += 3;
+        }
+
+        let tdFavorability =
+            map(SST,tdSstFloor,29.5,0,1,true) *
+            map(moisture,june ? 0.28 : 0.33,0.70,0,1,true) *
+            map(shear,tdShearCeiling,5,0,1,true);
+
+        let juneTdBoost = june ? 1.55 : 1;
+        let northTdBoost = map(latitude,20,38,1,1.35,true);
+        tdFavorability = min(
+            june ? 1.95 : 1.55,
+            tdFavorability*juneTdBoost*northTdBoost
+        );
+
+        if(tdFavorability>0){
+            // Strongest support is given to weaker depressions so they can
+            // consolidate instead of stalling indefinitely near 20-30 kt.
+            let weakTdBoost = map(sys.windSpeed,18,34,1.25,0.95,true);
+            let tdBoost = tdFavorability*weakTdBoost;
+
+            sys.organization = constrain(
+                sys.organization + 0.016*tdBoost,
+                0,1
+            );
+            sys.pressure -= 0.40*tdBoost;
+            sys.windSpeed += 0.42*tdBoost;
+            sys.depth = lerp(sys.depth,0.18,0.010*tdBoost);
         }
     }
 };

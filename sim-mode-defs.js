@@ -216,11 +216,11 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // around 20-30N rather than relying only on tropical transition.
     'atl_northlow': {
         inherit: 'tw',
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-82,-48),25).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-65,random(20,30)).y,
-        pressure: [1002,1015],
-        windSpeed: [18,32],
-        organization: [0.24,0.50],
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-80,-38),27).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-60,random(22,34)).y,
+        pressure: [1000,1013],
+        windSpeed: [20,35],
+        organization: [0.28,0.54],
         lowerWarmCore: 1,
         upperWarmCore: 1,
         depth: [0,0.12]
@@ -276,21 +276,21 @@ SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
     // Easterly waves remain the dominant peak-season source. A small June
     // floor prevents the first named storm from being pushed almost entirely
     // into July/August by the squared seasonal curve.
-    const waveActivity = june ? max(peak,0.32) : peak;
+    const waveActivity = june ? max(peak,0.45) : peak;
     if(random()<0.010*waveActivity)
         b.spawnArchetype('atl_tw');
 
     // Western Caribbean / Gulf systems are deliberately emphasized in June,
     // matching the early-season tendency for genesis closer to land.
     const westActivity = june ? 1.00 : may ? 0.55 : coreSeason ? max(0.45,peak) : lateSeason ? 0.65 : 0.10;
-    if(random()<0.0032*westActivity)
+    if(random()<(june ? 0.0042 : 0.0032)*westActivity)
         b.spawnArchetype('atl_west');
 
     // A separate warm-core northern tropical-low route makes genesis around
     // 20-30N possible without requiring every system to tropicalize from an
     // extratropical cyclone first.
-    const northActivity = june ? 1.00 : may ? 0.55 : coreSeason ? 0.80 : lateSeason ? 0.85 : 0.10;
-    if(random()<0.0020*northActivity)
+    const northActivity = june ? 1.25 : may ? 0.65 : coreSeason ? 0.95 : lateSeason ? 1.15 : 0.12;
+    if(random()<0.0030*northActivity)
         b.spawnArchetype('atl_northlow');
 
     // Frontal and subtropical transition is strongest in the early/late
@@ -1092,8 +1092,8 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     STORM_ALGORITHM.defaults.core(sys,u);
 
     // Help both tropical waves and weak tropical depressions consolidate in
-    // genuinely favorable environments. The boost still collapses to zero
-    // with cool SSTs, dry air, or strong shear.
+    // genuinely favorable environments. June and the 22-34N Atlantic belt get
+    // extra support because both were under-producing storms in test seasons.
     let developingTropical =
         sys.type===TROPWAVE ||
         (sys.type===TROP && sys.windSpeed<34);
@@ -1102,22 +1102,31 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         let SST = u.f("SST");
         let moisture = u.f("moisture");
         let shear = u.f("shear").mag()+sys.interaction.shear;
+        let latitude = abs(sys.coord().latitude);
+        let month = sys.basin.tickMoment().month();
+
+        let sstFloor = latitude>=24 ? 23.5 : 24.5;
+        let shearCeiling = latitude>=24 ? 22 : 20;
 
         let favorability =
-            map(SST,24.5,29.5,0,1,true) *
-            map(moisture,0.42,0.75,0,1,true) *
-            map(shear,20,5,0,1,true);
+            map(SST,sstFloor,29.5,0,1,true) *
+            map(moisture,0.40,0.75,0,1,true) *
+            map(shear,shearCeiling,5,0,1,true);
+
+        let juneBoost = month===5 ? 1.35 : 1;
+        let northBoost = map(latitude,20,32,1,1.30,true);
+        favorability = min(1.45,favorability*juneBoost*northBoost);
 
         if(favorability>0){
-            let stageFactor = sys.type===TROPWAVE ? 1 : 0.75;
+            let stageFactor = sys.type===TROPWAVE ? 1 : 0.80;
 
             sys.organization = constrain(
-                sys.organization + 0.010*favorability*stageFactor,
+                sys.organization + 0.011*favorability*stageFactor,
                 0,1
             );
 
-            sys.pressure -= 0.22*favorability*stageFactor;
-            sys.windSpeed += 0.18*favorability*stageFactor;
+            sys.pressure -= 0.24*favorability*stageFactor;
+            sys.windSpeed += 0.20*favorability*stageFactor;
         }
     }
 };
@@ -1208,26 +1217,30 @@ STORM_ALGORITHM[SIM_MODE_EXPERIMENTAL].core = function(sys,u){
 // -- Type Determination -- //
 
 STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
+    let storm = sys.fetchStorm();
+
     if(sys.type===TROPWAVE){
-        let storm = sys.fetchStorm();
+        let waveAdvisories = 0;
+        if(storm){
+            for(let d of storm.record)
+                if(d.type===TROPWAVE) waveAdvisories++;
+        }
+
         let initialWaveStage =
             storm &&
             !storm.TC &&
             (
-                sys.basin.tick-storm.birthTime<ADVISORY_TICKS ||
-                !storm.record.some(d=>d.type===TROPWAVE)
+                sys.basin.tick-storm.birthTime<ADVISORY_TICKS*2 ||
+                waveAdvisories<2
             );
 
-        // A newly spawned tropical wave must remain a wave for at least one
-        // full six-hour advisory cycle. This prevents a favorable disturbance
-        // from appearing on the map for the first time as a depression.
+        // Require a clearly visible precursor stage before depression genesis:
+        // at least 12 hours and two six-hour tropical-wave advisories.
         if(initialWaveStage && sys.lowerWarmCore>=0.53){
             sys.type = TROPWAVE;
             return;
         }
 
-        // Let a sufficiently organized warm-core wave become a depression
-        // somewhat earlier than the generic algorithm.
         sys.type =
             sys.lowerWarmCore<0.53 ? EXTROP :
             (sys.organization<0.34 || sys.windSpeed<21) ?
@@ -1237,13 +1250,34 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     }
 
     if(sys.type===TROP){
-        // Prevent newly formed tropical depressions from immediately bouncing
-        // back to TROPWAVE before they have a chance to reach storm strength.
+        // Once a wave has just crossed into tropical-depression status, hold
+        // that state until at least one TROP advisory has actually been logged.
+        // This prevents one-to-five-hour TD flashes that immediately revert.
+        let hasTropicalAdvisory = false;
+        if(storm){
+            for(let d of storm.record){
+                if(d.type===TROP){
+                    hasTropicalAdvisory = true;
+                    break;
+                }
+            }
+        }
+
+        if(storm && !storm.TC && !hasTropicalAdvisory){
+            if(sys.lowerWarmCore<0.48)
+                sys.type = EXTROP;
+            else
+                sys.type = TROP;
+            return;
+        }
+
+        // Hysteresis: a developed depression must deteriorate more clearly
+        // before it is allowed to fall back to a tropical wave.
         sys.type =
-            sys.lowerWarmCore<0.53 ? EXTROP :
-            ((sys.organization<0.34 && sys.windSpeed<45) || sys.windSpeed<18) ?
-                (sys.upperWarmCore<0.50 ? EXTROP : TROPWAVE) :
-                (sys.upperWarmCore<0.50 ? SUBTROP : TROP);
+            sys.lowerWarmCore<0.51 ? EXTROP :
+            ((sys.organization<0.30 && sys.windSpeed<40) || sys.windSpeed<18) ?
+                (sys.upperWarmCore<0.48 ? EXTROP : TROPWAVE) :
+                (sys.upperWarmCore<0.48 ? SUBTROP : TROP);
         return;
     }
 

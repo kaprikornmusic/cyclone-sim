@@ -384,8 +384,10 @@ class Storm{
                     }
 
                     // Every record is a six-hour advisory, so mark each one.
-                    if(lastPoint>=0){
-                        for(let n=0;n<=lastPoint;n++)
+                    // A brand-new system with only one record still gets a marker.
+                    let pointEnd = lastPoint>=0 ? lastPoint : this.record.length-1;
+                    if(pointEnd>=0){
+                        for(let n=0;n<=pointEnd;n++)
                             drawTrackPoint(this.record[n]);
                     }
 

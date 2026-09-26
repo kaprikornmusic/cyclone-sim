@@ -195,9 +195,9 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
             return Coordinate.convertToXY(b.mapType,lon,12).x;
         },
         y: (b)=>Coordinate.convertToXY(b.mapType,-30,random(7,19)).y,
-        pressure: [1004,1019],
-        windSpeed: [10,30],
-        organization: [0.10,0.38]
+        pressure: [1003,1018],
+        windSpeed: [12,31],
+        organization: [0.16,0.44]
     },
 
     // Western Caribbean / Gulf tropical disturbances. These remain tropical
@@ -206,9 +206,9 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         inherit: 'tw',
         x: (b)=>Coordinate.convertToXY(b.mapType,random(-94,-58),19).x,
         y: (b)=>Coordinate.convertToXY(b.mapType,-75,random(10,27)).y,
-        pressure: [1003,1016],
-        windSpeed: [15,32],
-        organization: [0.18,0.44]
+        pressure: [1002,1015],
+        windSpeed: [17,33],
+        organization: [0.22,0.48]
     },
 
     // Warm-core tropical lows farther north over the Gulf Stream / Bahamas
@@ -218,9 +218,9 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         inherit: 'tw',
         x: (b)=>Coordinate.convertToXY(b.mapType,random(-80,-32),29).x,
         y: (b)=>Coordinate.convertToXY(b.mapType,-56,random(24,37)).y,
-        pressure: [998,1012],
-        windSpeed: [22,36],
-        organization: [0.32,0.58],
+        pressure: [997,1011],
+        windSpeed: [23,37],
+        organization: [0.36,0.62],
         lowerWarmCore: 1,
         upperWarmCore: 1,
         depth: [0,0.10]
@@ -277,20 +277,20 @@ SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
     // floor prevents the first named storm from being pushed almost entirely
     // into July/August by the squared seasonal curve.
     const waveActivity = june ? max(peak,0.72) : peak;
-    if(random()<0.010*waveActivity)
+    if(random()<0.0075*waveActivity)
         b.spawnArchetype('atl_tw');
 
     // Western Caribbean / Gulf systems are deliberately emphasized in June,
     // matching the early-season tendency for genesis closer to land.
     const westActivity = june ? 1.00 : may ? 0.55 : coreSeason ? max(0.45,peak) : lateSeason ? 0.65 : 0.10;
-    if(random()<(june ? 0.0060 : 0.0032)*westActivity)
+    if(random()<(june ? 0.0048 : 0.0025)*westActivity)
         b.spawnArchetype('atl_west');
 
     // A separate warm-core northern tropical-low route makes genesis around
     // 20-30N possible without requiring every system to tropicalize from an
     // extratropical cyclone first.
     const northActivity = june ? 1.65 : may ? 0.70 : coreSeason ? 1.05 : lateSeason ? 1.25 : 0.14;
-    if(random()<0.0038*northActivity)
+    if(random()<0.0030*northActivity)
         b.spawnArchetype('atl_northlow');
 
     // Frontal and subtropical transition is strongest in the early/late
@@ -1165,11 +1165,11 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
 
         if(favorability>0){
             sys.organization = constrain(
-                sys.organization + 0.013*favorability,
+                sys.organization + 0.016*favorability,
                 0,1
             );
-            sys.pressure -= 0.30*favorability;
-            sys.windSpeed += 0.26*favorability;
+            sys.pressure -= 0.36*favorability;
+            sys.windSpeed += 0.32*favorability;
         }
     }else if(sys.type===TROP && sys.windSpeed<34){
         // Depression-only consolidation assist. Once genesis has occurred,
@@ -1202,12 +1202,12 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             let tdBoost = tdFavorability*weakTdBoost;
 
             sys.organization = constrain(
-                sys.organization + 0.016*tdBoost,
+                sys.organization + 0.020*tdBoost,
                 0,1
             );
-            sys.pressure -= 0.40*tdBoost;
-            sys.windSpeed += 0.42*tdBoost;
-            sys.depth = lerp(sys.depth,0.18,0.010*tdBoost);
+            sys.pressure -= 0.50*tdBoost;
+            sys.windSpeed += 0.55*tdBoost;
+            sys.depth = lerp(sys.depth,0.16,0.012*tdBoost);
         }
     }
 };

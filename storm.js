@@ -248,12 +248,24 @@ class Storm{
                 if(ty===EXTROP){
                     stormIcons.textSize(18);
                     stormIcons.text("L",0,0);
+                }else if(ty===TROPWAVE){
+                    stormIcons.triangle(
+                        0,-DIAMETER*0.6,
+                        -DIAMETER*0.55,DIAMETER*0.45,
+                        DIAMETER*0.55,DIAMETER*0.45
+                    );
                 }else stormIcons.ellipse(0,0,DIAMETER);
                 drawArms();
             }
             stormIcons.fill(scaleIconData.color);
             stormIcons.noStroke();
-            if(ty!==EXTROP) stormIcons.ellipse(0,0,DIAMETER);
+            if(ty===TROPWAVE){
+                stormIcons.triangle(
+                    0,-DIAMETER*0.6,
+                    -DIAMETER*0.55,DIAMETER*0.45,
+                    DIAMETER*0.55,DIAMETER*0.45
+                );
+            }else if(ty!==EXTROP) stormIcons.ellipse(0,0,DIAMETER);
             drawArms();
             if(ty===EXTROP){
                 stormIcons.fill(COLORS.storm.extL);
@@ -334,7 +346,12 @@ class Storm{
                 tracks.pop();
             };
 
-            if(this.inBasinTC || simSettings.trackMode===1){
+            const activeTropicalWave =
+                this.current &&
+                this.current.type===TROPWAVE &&
+                this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD;
+
+            if(this.inBasinTC || activeTropicalWave || simSettings.trackMode===1){
                 if(newestSegment){
                     if(this.record.length>1 && (selectedStorm===this || selectedStorm===undefined)){
                         let t = (this.record.length-2)*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;

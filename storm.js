@@ -218,6 +218,14 @@ class Storm{
             let ty = advX.type;
             let name = this.getNameByTick(viewTick);
             let timestamp = performance.now();
+
+            // Keep very weak tropical waves/lows in the simulation, but hide
+            // their map icons until they reach roughly 25 mph. This reduces
+            // map clutter without preventing a disturbance from developing.
+            if(ty===TROPWAVE && st<TROPWAVE_VISIBLE_WIND_THRESHOLD){
+                this.rotationUpdateTimestamp = timestamp;
+                return;
+            }
             this.rotation -= 0.001 * (timestamp - this.rotationUpdateTimestamp) * pow(1.0115, min(270,st));
             this.rotationUpdateTimestamp = timestamp;
             let drawArms = ()=>{
@@ -279,30 +287,108 @@ class Storm{
 
     renderTrack(newestSegment){
         if(simSettings.trackMode!==3){
+            const viewData = this.getStormDataByTick(viewTick,true);
+            const hiddenWeakWave =
+                !this.TC &&
+                viewData &&
+                viewData.type===TROPWAVE &&
+                viewData.windSpeed<TROPWAVE_VISIBLE_WIND_THRESHOLD;
+
+            // Weak tropical waves remain active in the simulation, but their
+            // icons/tracks stay hidden until they become a meaningful system.
+            if(hiddenWeakWave && selectedStorm!==this)
+                return;
+
+            const drawTrackLine = (a,b)=>{
+                tracks.push();
+                tracks.stroke(255);
+                tracks.strokeWeight(1.25);
+                tracks.line(a.x,a.y,b.x,b.y);
+                tracks.pop();
+            };
+
+            const drawTrackPoint = (adv)=>{
+                let pos = adv.pos;
+                let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
+                const r = 4;
+
+                tracks.push();
+                tracks.stroke(0);
+                tracks.strokeWeight(1);
+                tracks.fill(col);
+
+                switch(adv.type){
+                    case TROPWAVE:
+                        // Tropical wave / tropical low: triangle
+                        tracks.triangle(
+                            pos.x, pos.y-r-1,
+                            pos.x-r-1, pos.y+r,
+                            pos.x+r+1, pos.y+r
+                        );
+                        break;
+                    case SUBTROP:
+                        // Subtropical cyclone: square
+                        tracks.rectMode(CENTER);
+                        tracks.rect(pos.x,pos.y,r*2,r*2);
+                        break;
+                    case TROP:
+                        // Tropical cyclone: circle
+                        tracks.ellipse(pos.x,pos.y,r*2,r*2);
+                        break;
+                    case EXTROP:
+                        // Extratropical phase: small plus, keeping every
+                        // six-hour advisory visible without reusing a TC shape.
+                        tracks.noFill();
+                        tracks.stroke(0);
+                        tracks.strokeWeight(3);
+                        tracks.line(pos.x-r,pos.y,pos.x+r,pos.y);
+                        tracks.line(pos.x,pos.y-r,pos.x,pos.y+r);
+                        tracks.stroke(255);
+                        tracks.strokeWeight(1);
+                        tracks.line(pos.x-r,pos.y,pos.x+r,pos.y);
+                        tracks.line(pos.x,pos.y-r,pos.x,pos.y+r);
+                        break;
+                }
+
+                tracks.pop();
+            };
+
             if(this.inBasinTC || simSettings.trackMode===1){
                 if(newestSegment){
                     if(this.record.length>1 && (selectedStorm===this || selectedStorm===undefined)){
                         let t = (this.record.length-2)*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
                         let adv = this.record[this.record.length-2];
-                        let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
-                        tracks.stroke(col);
-                        let pos = adv.pos;
-                        let nextPos = this.record[this.record.length-1].pos;
-                        if(simSettings.trackMode===1 || (t>=this.formationTime && (!this.dissipationTime || t<this.dissipationTime))) tracks.line(pos.x,pos.y,nextPos.x,nextPos.y);
+                        let nextAdv = this.record[this.record.length-1];
+
+                        // Once a system becomes a TC, retain its earlier
+                        // tropical-wave/low track instead of starting the line
+                        // only at formation time.
+                        if(simSettings.trackMode===1 || (!this.dissipationTime || t<this.dissipationTime)){
+                            drawTrackLine(adv.pos,nextAdv.pos);
+                            drawTrackPoint(adv);
+                            drawTrackPoint(nextAdv);
+                        }
                     }
                 }else if(this.aliveAt(viewTick) || simSettings.trackMode===2 || selectedStorm===this){
+                    let lastPoint = -1;
+
+                    // Draw the thin white track first so the six-hour markers
+                    // sit cleanly on top.
                     for(let n=0;n<this.record.length-1;n++){
                         let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                        if(simSettings.trackMode!==1){
-                            if(t<this.formationTime) continue;
-                            if(t>=this.dissipationTime) break;
-                        }
-                        let adv = this.record[n];
-                        let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
-                        tracks.stroke(col);
-                        let pos = adv.pos;
-                        let nextPos = this.record[n+1].pos;
-                        tracks.line(pos.x,pos.y,nextPos.x,nextPos.y);
+                        if(simSettings.trackMode!==1 && this.dissipationTime && t>=this.dissipationTime)
+                            break;
+
+                        drawTrackLine(this.record[n].pos,this.record[n+1].pos);
+                        lastPoint = n+1;
+                    }
+
+                    // Every record is a six-hour advisory, so mark each one.
+                    // A brand-new system with only one record still gets a marker.
+                    let pointEnd = lastPoint>=0 ? lastPoint : this.record.length-1;
+                    if(pointEnd>=0){
+                        for(let n=0;n<=pointEnd;n++)
+                            drawTrackPoint(this.record[n]);
                     }
 
                     if(selectedStorm===this){
@@ -315,20 +401,18 @@ class Storm{
 
                         for(let n=0;n<this.record.length;n++){
                             let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                            if(simSettings.trackMode!==1){
-                                if(t<this.formationTime) continue;
-                                if(t>this.dissipationTime) break;
-                            }
+                            if(simSettings.trackMode!==1 && this.dissipationTime && t>this.dissipationTime)
+                                break;
 
                             let adv = this.record[n];
                             let pos = adv.pos;
                             let label = adv.coord().format(1);
                             let drawLeft = pos.x > WIDTH-90;
                             let labelX = pos.x + (drawLeft ? -6 : 6);
-                            let labelY = pos.y + (n%2===0 ? -8 : 8);
+                            let labelY = pos.y + (n%2===0 ? -10 : 10);
 
-                            if(pos.y<12) labelY = pos.y+8;
-                            else if(pos.y>HEIGHT-12) labelY = pos.y-8;
+                            if(pos.y<14) labelY = pos.y+10;
+                            else if(pos.y>HEIGHT-14) labelY = pos.y-10;
 
                             tracks.textAlign(drawLeft ? RIGHT : LEFT,CENTER);
                             tracks.text(label,labelX,labelY);

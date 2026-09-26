@@ -204,11 +204,26 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // disturbances in the simulator, but allow genesis much farther west.
     'atl_west': {
         inherit: 'tw',
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-92,-62),16).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-75,random(10,24)).y,
-        pressure: [1004,1017],
-        windSpeed: [10,30],
-        organization: [0.08,0.32]
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-94,-58),19).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-75,random(10,27)).y,
+        pressure: [1003,1016],
+        windSpeed: [15,32],
+        organization: [0.12,0.36]
+    },
+
+    // Warm-core tropical lows farther north over the Gulf Stream / Bahamas
+    // region. These provide a genuine tropical-wave/low route to genesis
+    // around 20-30N rather than relying only on tropical transition.
+    'atl_northlow': {
+        inherit: 'tw',
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-82,-48),25).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-65,random(20,30)).y,
+        pressure: [1002,1015],
+        windSpeed: [18,32],
+        organization: [0.18,0.42],
+        lowerWarmCore: 1,
+        upperWarmCore: 1,
+        depth: [0,0.12]
     },
 
     // Decaying frontal lows near the Gulf / southeastern United States.
@@ -219,25 +234,25 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         pressure: [1003,1017],
         windSpeed: [15,30],
         type: EXTROP,
-        organization: [0.08,0.32],
-        lowerWarmCore: [0.35,0.58],
-        upperWarmCore: [0.12,0.32],
-        depth: [0.68,0.95]
+        organization: [0.15,0.38],
+        lowerWarmCore: [0.48,0.64],
+        upperWarmCore: [0.25,0.45],
+        depth: [0.55,0.82]
     },
 
     // Non-tropical/subtropical lows over the western and central Atlantic.
     // These are deliberately closer to a warm-core transition than ordinary
     // extratropical cyclones, making subtropical genesis north of 25N possible.
     'atl_subtrop': {
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-76,-34),31).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-55,random(25,38)).y,
-        pressure: [1000,1015],
-        windSpeed: [15,35],
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-78,-38),29).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-58,random(23,35)).y,
+        pressure: [999,1013],
+        windSpeed: [20,35],
         type: EXTROP,
-        organization: [0.12,0.38],
-        lowerWarmCore: [0.48,0.68],
-        upperWarmCore: [0.22,0.48],
-        depth: [0.55,0.85]
+        organization: [0.24,0.46],
+        lowerWarmCore: [0.56,0.72],
+        upperWarmCore: [0.40,0.56],
+        depth: [0.42,0.70]
     }
 };
 
@@ -253,28 +268,40 @@ SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
 
     const peak = sq((seasonCurve(b.tick)+1)/2);
     const month = b.tickMoment().month(); // 0 = January
-    const shoulderSeason = month===4 || month===5 || month===9 || month===10;
+    const may = month===4;
+    const june = month===5;
     const coreSeason = month>=6 && month<=8;
+    const lateSeason = month===9 || month===10;
 
-    // Tropical/easterly-wave family: still the dominant source, but no longer
-    // the only practical path to Atlantic tropical cyclogenesis.
-    if(random()<0.010*peak)
+    // Easterly waves remain the dominant peak-season source. A small June
+    // floor prevents the first named storm from being pushed almost entirely
+    // into July/August by the squared seasonal curve.
+    const waveActivity = june ? max(peak,0.32) : peak;
+    if(random()<0.010*waveActivity)
         b.spawnArchetype('atl_tw');
 
-    // Western Caribbean / Gulf disturbances become more common near the
-    // climatological peak but can occur throughout the hurricane season.
-    if(random()<0.0020*peak)
+    // Western Caribbean / Gulf systems are deliberately emphasized in June,
+    // matching the early-season tendency for genesis closer to land.
+    const westActivity = june ? 1.00 : may ? 0.55 : coreSeason ? max(0.45,peak) : lateSeason ? 0.65 : 0.10;
+    if(random()<0.0032*westActivity)
         b.spawnArchetype('atl_west');
 
-    // Frontal and subtropical genesis is favored in the early/late-season
-    // shoulders while remaining possible during July-September.
-    const frontalFactor = shoulderSeason ? 1 : coreSeason ? 0.60 : 0.12;
-    const subtropFactor = shoulderSeason ? 0.90 : coreSeason ? 0.70 : 0.15;
+    // A separate warm-core northern tropical-low route makes genesis around
+    // 20-30N possible without requiring every system to tropicalize from an
+    // extratropical cyclone first.
+    const northActivity = june ? 1.00 : may ? 0.55 : coreSeason ? 0.80 : lateSeason ? 0.85 : 0.10;
+    if(random()<0.0020*northActivity)
+        b.spawnArchetype('atl_northlow');
 
-    if(random()<0.0025*frontalFactor)
+    // Frontal and subtropical transition is strongest in the early/late
+    // season, but remains possible through the climatological peak.
+    const frontalFactor = june ? 1.15 : may ? 0.85 : lateSeason ? 1.00 : coreSeason ? 0.65 : 0.12;
+    const subtropFactor = june ? 1.10 : may ? 0.80 : lateSeason ? 1.00 : coreSeason ? 0.85 : 0.15;
+
+    if(random()<0.0030*frontalFactor)
         b.spawnArchetype('atl_front');
 
-    if(random()<0.0025*subtropFactor)
+    if(random()<0.0030*subtropFactor)
         b.spawnArchetype('atl_subtrop');
 
     // Retain ordinary baroclinic systems so the broader weather pattern and

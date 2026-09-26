@@ -197,7 +197,7 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         y: (b)=>Coordinate.convertToXY(b.mapType,-30,random(7,19)).y,
         pressure: [1004,1019],
         windSpeed: [10,30],
-        organization: [0.02,0.28]
+        organization: [0.08,0.34]
     },
 
     // Western Caribbean / Gulf tropical disturbances. These remain tropical
@@ -208,7 +208,7 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         y: (b)=>Coordinate.convertToXY(b.mapType,-75,random(10,27)).y,
         pressure: [1003,1016],
         windSpeed: [15,32],
-        organization: [0.12,0.36]
+        organization: [0.16,0.40]
     },
 
     // Warm-core tropical lows farther north over the Gulf Stream / Bahamas
@@ -220,7 +220,7 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         y: (b)=>Coordinate.convertToXY(b.mapType,-65,random(20,30)).y,
         pressure: [1002,1015],
         windSpeed: [18,32],
-        organization: [0.18,0.42],
+        organization: [0.22,0.46],
         lowerWarmCore: 1,
         upperWarmCore: 1,
         depth: [0,0.12]
@@ -1087,6 +1087,36 @@ STORM_ALGORITHM.defaults.core = function(sys,u){
         sys.kill = true;
 };
 
+STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
+    // Run the standard intensity physics first.
+    STORM_ALGORITHM.defaults.core(sys,u);
+
+    // Give tropical waves a modest development assist only when the
+    // surrounding environment is genuinely favorable.
+    if(sys.type===TROPWAVE && !u.land()){
+        let SST = u.f("SST");
+        let moisture = u.f("moisture");
+        let shear = u.f("shear").mag()+sys.interaction.shear;
+
+        let favorability =
+            map(SST,25,29.5,0,1,true) *
+            map(moisture,0.45,0.75,0,1,true) *
+            map(shear,18,5,0,1,true);
+
+        if(favorability>0){
+            sys.organization = constrain(
+                sys.organization + 0.005*favorability,
+                0,1
+            );
+
+            // Slight pressure/wind support helps a well-organized disturbance
+            // reach depression/storm strength without guaranteeing genesis.
+            sys.pressure -= 0.12*favorability;
+            sys.windSpeed += 0.08*favorability;
+        }
+    }
+};
+
 STORM_ALGORITHM[SIM_MODE_EXPERIMENTAL].core = function(sys,u){
     let SST = u.f("SST");
     let jet = u.f("jetstream");
@@ -1171,6 +1201,22 @@ STORM_ALGORITHM[SIM_MODE_EXPERIMENTAL].core = function(sys,u){
 };
 
 // -- Type Determination -- //
+
+STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
+    if(sys.type!==TROPWAVE){
+        STORM_ALGORITHM.defaults.typeDetermination(sys,u);
+        return;
+    }
+
+    // Normal-mode tropical waves can become a tropical/subtropical cyclone
+    // a little earlier than the generic algorithm, while still requiring a
+    // warm core, organized circulation, and sufficient wind.
+    sys.type =
+        sys.lowerWarmCore<0.55 ? EXTROP :
+        (sys.organization<0.40 || sys.windSpeed<23) ?
+            (sys.upperWarmCore<0.54 ? EXTROP : TROPWAVE) :
+            (sys.upperWarmCore<0.54 ? SUBTROP : TROP);
+};
 
 STORM_ALGORITHM.defaults.typeDetermination = function(sys,u){
     switch(sys.type){

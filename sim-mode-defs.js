@@ -197,7 +197,7 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         y: (b)=>Coordinate.convertToXY(b.mapType,-30,random(7,19)).y,
         pressure: [1004,1019],
         windSpeed: [10,30],
-        organization: [0.08,0.34]
+        organization: [0.10,0.38]
     },
 
     // Western Caribbean / Gulf tropical disturbances. These remain tropical
@@ -208,7 +208,7 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         y: (b)=>Coordinate.convertToXY(b.mapType,-75,random(10,27)).y,
         pressure: [1003,1016],
         windSpeed: [15,32],
-        organization: [0.16,0.40]
+        organization: [0.18,0.44]
     },
 
     // Warm-core tropical lows farther north over the Gulf Stream / Bahamas
@@ -220,7 +220,7 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         y: (b)=>Coordinate.convertToXY(b.mapType,-65,random(20,30)).y,
         pressure: [1002,1015],
         windSpeed: [18,32],
-        organization: [0.22,0.46],
+        organization: [0.24,0.50],
         lowerWarmCore: 1,
         upperWarmCore: 1,
         depth: [0,0.12]
@@ -1105,14 +1105,14 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
 
         if(favorability>0){
             sys.organization = constrain(
-                sys.organization + 0.005*favorability,
+                sys.organization + 0.008*favorability,
                 0,1
             );
 
-            // Slight pressure/wind support helps a well-organized disturbance
+            // Moderate pressure/wind support helps a favorable disturbance
             // reach depression/storm strength without guaranteeing genesis.
-            sys.pressure -= 0.12*favorability;
-            sys.windSpeed += 0.08*favorability;
+            sys.pressure -= 0.18*favorability;
+            sys.windSpeed += 0.12*favorability;
         }
     }
 };
@@ -1213,9 +1213,9 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     // warm core, organized circulation, and sufficient wind.
     sys.type =
         sys.lowerWarmCore<0.55 ? EXTROP :
-        (sys.organization<0.40 || sys.windSpeed<23) ?
-            (sys.upperWarmCore<0.54 ? EXTROP : TROPWAVE) :
-            (sys.upperWarmCore<0.54 ? SUBTROP : TROP);
+        (sys.organization<0.36 || sys.windSpeed<22) ?
+            (sys.upperWarmCore<0.52 ? EXTROP : TROPWAVE) :
+            (sys.upperWarmCore<0.52 ? SUBTROP : TROP);
 };
 
 STORM_ALGORITHM.defaults.typeDetermination = function(sys,u){

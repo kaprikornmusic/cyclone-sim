@@ -219,12 +219,6 @@ class Storm{
             let name = this.getNameByTick(viewTick);
             let timestamp = performance.now();
 
-            // Normal-mode waves below this threshold are removed by Basin.
-            // Keep the rendering guard for loaded/legacy states and other modes.
-            if(ty===TROPWAVE && st<TROPWAVE_MIN_WIND_THRESHOLD){
-                this.rotationUpdateTimestamp = timestamp;
-                return;
-            }
             this.rotation -= 0.001 * (timestamp - this.rotationUpdateTimestamp) * pow(1.0115, min(270,st));
             this.rotationUpdateTimestamp = timestamp;
             let drawArms = ()=>{
@@ -286,18 +280,6 @@ class Storm{
 
     renderTrack(newestSegment){
         if(simSettings.trackMode!==3){
-            const viewData = this.getStormDataByTick(viewTick,true);
-            const hiddenWeakWave =
-                !this.TC &&
-                viewData &&
-                viewData.type===TROPWAVE &&
-                viewData.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD;
-
-            // Normal-mode weak waves are removed from the active simulation;
-            // this guard also keeps loaded/legacy weak-wave tracks uncluttered.
-            if(hiddenWeakWave && selectedStorm!==this)
-                return;
-
             const drawTrackLine = (a,b)=>{
                 tracks.push();
                 tracks.stroke(255);
@@ -1194,6 +1176,17 @@ class ActiveSystem extends StormData{
             STORM_ALGORITHM[basin.actMode].typeDetermination(this,u);
         else
             STORM_ALGORITHM.defaults.typeDetermination(this,u);
+
+        // Hard cutoff for Normal mode: dissipate immediately in the same tick
+        // that a tropical wave/low falls below 25 mph.
+        if(
+            basin.actMode===SIM_MODE_NORMAL &&
+            this.type===TROPWAVE &&
+            this.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD
+        ){
+            basin.discardWeakTropicalWave(this);
+            return;
+        }
         
         let x = this.pos.x;
         let y = this.pos.y;

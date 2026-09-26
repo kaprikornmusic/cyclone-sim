@@ -1478,7 +1478,14 @@ UI.init = function(){
         let txtStr = "";
         if(selectedStorm){
             let sName = selectedStorm.getFullNameByTick(viewTick);
-            let sData = selectedStorm.getStormDataByTick(viewTick);
+            // At the live simulation time, use the current ActiveSystem data
+            // instead of the last 6-hour advisory. This prevents a weakening
+            // tropical wave from appearing to jump straight from 25 mph to
+            // dissipation when the actual Normal-mode cutoff is 20 mph.
+            let sData = selectedStorm.getStormDataByTick(
+                viewTick,
+                UI.viewBasin && UI.viewBasin.viewingPresent()
+            );
             if(sData){
                 let sWind = sData ? sData.windSpeed : 0;
                 sWind = displayWindspeed(sWind);

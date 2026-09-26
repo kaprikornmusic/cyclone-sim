@@ -216,14 +216,14 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // around 20-30N rather than relying only on tropical transition.
     'atl_northlow': {
         inherit: 'tw',
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-80,-38),27).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-60,random(22,34)).y,
-        pressure: [1000,1013],
-        windSpeed: [20,35],
-        organization: [0.28,0.54],
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-80,-32),29).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-56,random(24,37)).y,
+        pressure: [998,1012],
+        windSpeed: [22,36],
+        organization: [0.32,0.58],
         lowerWarmCore: 1,
         upperWarmCore: 1,
-        depth: [0,0.12]
+        depth: [0,0.10]
     },
 
     // Decaying frontal lows near the Gulf / southeastern United States.
@@ -244,15 +244,15 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // These are deliberately closer to a warm-core transition than ordinary
     // extratropical cyclones, making subtropical genesis north of 25N possible.
     'atl_subtrop': {
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-78,-38),29).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-58,random(23,35)).y,
-        pressure: [999,1013],
-        windSpeed: [20,35],
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-78,-32),31).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-55,random(25,38)).y,
+        pressure: [997,1012],
+        windSpeed: [22,37],
         type: EXTROP,
-        organization: [0.24,0.46],
-        lowerWarmCore: [0.56,0.72],
-        upperWarmCore: [0.40,0.56],
-        depth: [0.42,0.70]
+        organization: [0.28,0.50],
+        lowerWarmCore: [0.60,0.78],
+        upperWarmCore: [0.44,0.60],
+        depth: [0.35,0.62]
     }
 };
 
@@ -276,32 +276,32 @@ SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
     // Easterly waves remain the dominant peak-season source. A small June
     // floor prevents the first named storm from being pushed almost entirely
     // into July/August by the squared seasonal curve.
-    const waveActivity = june ? max(peak,0.58) : peak;
+    const waveActivity = june ? max(peak,0.72) : peak;
     if(random()<0.010*waveActivity)
         b.spawnArchetype('atl_tw');
 
     // Western Caribbean / Gulf systems are deliberately emphasized in June,
     // matching the early-season tendency for genesis closer to land.
     const westActivity = june ? 1.00 : may ? 0.55 : coreSeason ? max(0.45,peak) : lateSeason ? 0.65 : 0.10;
-    if(random()<(june ? 0.0050 : 0.0032)*westActivity)
+    if(random()<(june ? 0.0060 : 0.0032)*westActivity)
         b.spawnArchetype('atl_west');
 
     // A separate warm-core northern tropical-low route makes genesis around
     // 20-30N possible without requiring every system to tropicalize from an
     // extratropical cyclone first.
-    const northActivity = june ? 1.40 : may ? 0.65 : coreSeason ? 0.95 : lateSeason ? 1.15 : 0.12;
-    if(random()<0.0032*northActivity)
+    const northActivity = june ? 1.65 : may ? 0.70 : coreSeason ? 1.05 : lateSeason ? 1.25 : 0.14;
+    if(random()<0.0038*northActivity)
         b.spawnArchetype('atl_northlow');
 
     // Frontal and subtropical transition is strongest in the early/late
     // season, but remains possible through the climatological peak.
-    const frontalFactor = june ? 1.30 : may ? 0.85 : lateSeason ? 1.00 : coreSeason ? 0.65 : 0.12;
-    const subtropFactor = june ? 1.25 : may ? 0.80 : lateSeason ? 1.00 : coreSeason ? 0.85 : 0.15;
+    const frontalFactor = june ? 1.50 : may ? 0.90 : lateSeason ? 1.05 : coreSeason ? 0.70 : 0.14;
+    const subtropFactor = june ? 1.45 : may ? 0.90 : lateSeason ? 1.10 : coreSeason ? 0.95 : 0.18;
 
-    if(random()<0.0032*frontalFactor)
+    if(random()<0.0038*frontalFactor)
         b.spawnArchetype('atl_front');
 
-    if(random()<0.0032*subtropFactor)
+    if(random()<0.0038*subtropFactor)
         b.spawnArchetype('atl_subtrop');
 
     // Retain ordinary baroclinic systems so the broader weather pattern and
@@ -1088,7 +1088,6 @@ STORM_ALGORITHM.defaults.core = function(sys,u){
 };
 
 STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
-    // Run the standard intensity physics first.
     STORM_ALGORITHM.defaults.core(sys,u);
 
     let lnd = u.land();
@@ -1101,84 +1100,81 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     let month = sys.basin.tickMoment().month();
     let june = month===5;
 
-    // Tropical-transition path for ordinary/frontal extratropical cyclones.
-    // Warm water, moist air and weak/moderate shear gradually erode the
-    // baroclinic structure, warm the core and make a TROPWAVE transition
-    // substantially more attainable without forcing every extratropical low.
+    // Stronger tropical-transition pathway for extratropical cyclones.
+    // Favorable oceanic lows can progressively warm their core, become
+    // shallower, organize, and transition into a Tropical Wave/Low.
     if(sys.type===EXTROP){
         let transitionFavorability =
-            map(SST,june ? 22.8 : 23.5,28.5,0,1,true) *
-            map(moisture,0.36,0.72,0,1,true) *
-            map(shear,june ? 25 : 23,6,0,1,true) *
-            map(latitude,12,42,0.85,1.10,true);
+            map(SST,june ? 21.8 : 22.8,28.5,0,1,true) *
+            map(moisture,0.30,0.68,0,1,true) *
+            map(shear,june ? 28 : 25,6,0,1,true) *
+            map(latitude,15,40,0.95,1.35,true);
 
         transitionFavorability = min(
-            june ? 1.60 : 1.25,
-            transitionFavorability*(june ? 1.45 : 1)
+            june ? 2.10 : 1.60,
+            transitionFavorability*(june ? 1.80 : 1.20)
         );
 
         if(transitionFavorability>0){
             sys.lowerWarmCore = lerp(
                 sys.lowerWarmCore,
                 1,
-                0.016*transitionFavorability
+                0.024*transitionFavorability
             );
             sys.upperWarmCore = lerp(
                 sys.upperWarmCore,
                 sys.lowerWarmCore,
-                0.020*transitionFavorability
+                0.030*transitionFavorability
             );
             sys.organization = constrain(
-                sys.organization + 0.0045*transitionFavorability,
+                sys.organization + 0.0065*transitionFavorability,
                 0,1
             );
             sys.depth = lerp(
                 sys.depth,
-                0.35,
-                0.012*transitionFavorability
+                0.25,
+                0.018*transitionFavorability
             );
-            sys.pressure -= 0.08*transitionFavorability;
+            sys.pressure -= 0.12*transitionFavorability;
+            sys.windSpeed += 0.06*transitionFavorability;
         }
     }
 
-    // Help tropical waves and weak tropical depressions consolidate in
-    // genuinely favorable environments. June gets a stronger boost because
-    // multi-season testing still showed severe early-season underproduction.
     let developingTropical =
         sys.type===TROPWAVE ||
         (sys.type===TROP && sys.windSpeed<34);
 
     if(developingTropical){
-        let sstFloor = latitude>=24 ? 23.5 : 24.5;
-        let shearCeiling = latitude>=24 ? 22 : 20;
+        let sstFloor = latitude>=24 ? 22.5 : 24.2;
+        let shearCeiling = latitude>=24 ? 25 : 21;
 
         if(june){
-            sstFloor -= 0.7;
-            shearCeiling += 3;
+            sstFloor -= 1.0;
+            shearCeiling += 4;
         }
 
         let favorability =
             map(SST,sstFloor,29.5,0,1,true) *
-            map(moisture,june ? 0.37 : 0.40,0.75,0,1,true) *
+            map(moisture,june ? 0.33 : 0.38,0.74,0,1,true) *
             map(shear,shearCeiling,5,0,1,true);
 
-        let juneBoost = june ? 1.80 : 1;
-        let northBoost = map(latitude,20,32,1,1.30,true);
+        let juneBoost = june ? 2.25 : 1;
+        let northBoost = map(latitude,20,38,1,1.60,true);
+
         favorability = min(
-            june ? 1.85 : 1.45,
+            june ? 2.25 : 1.75,
             favorability*juneBoost*northBoost
         );
 
         if(favorability>0){
-            let stageFactor = sys.type===TROPWAVE ? 1 : 0.80;
+            let stageFactor = sys.type===TROPWAVE ? 1 : 0.82;
 
             sys.organization = constrain(
-                sys.organization + 0.012*favorability*stageFactor,
+                sys.organization + 0.013*favorability*stageFactor,
                 0,1
             );
-
-            sys.pressure -= 0.27*favorability*stageFactor;
-            sys.windSpeed += 0.23*favorability*stageFactor;
+            sys.pressure -= 0.30*favorability*stageFactor;
+            sys.windSpeed += 0.26*favorability*stageFactor;
         }
     }
 };
@@ -1346,17 +1342,16 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     }
 
     if(sys.type===EXTROP){
-        // Normal-mode frontal/non-tropical lows must still pass through a
-        // visible subtropical or tropical-wave/low stage, but once their core
-        // has warmed sufficiently the transition is intentionally easier.
-        if(sys.lowerWarmCore<0.52){
+        // Favorable extratropical lows can transition more readily, but must
+        // still pass through Subtropical or Tropical Wave/Low before TROP.
+        if(sys.lowerWarmCore<0.48){
             sys.type = EXTROP;
             return;
         }
 
-        let organized = sys.organization>=0.32 && sys.windSpeed>=20;
+        let organized = sys.organization>=0.28 && sys.windSpeed>=18;
 
-        if(sys.upperWarmCore<0.47)
+        if(sys.upperWarmCore<0.42)
             sys.type = organized ? SUBTROP : EXTROP;
         else
             sys.type = TROPWAVE;

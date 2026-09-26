@@ -143,13 +143,7 @@ class Basin{
             for(let i=this.activeSystems.length-1;i>=0;i--){
                 let sys = this.activeSystems[i];
                 if(sys.type===TROPWAVE && sys.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD){
-                    let storm = sys.fetchStorm();
-                    storm.deathTime = this.tick;
-                    if(storm.TC && storm.dissipationTime===undefined)
-                        storm.dissipationTime = this.tick;
-                    if(storm.inBasinTC && storm.exitTime===undefined)
-                        storm.exitTime = this.tick;
-                    storm.current = undefined;
+                    this.discardWeakTropicalWave(sys);
                     this.activeSystems.splice(i,1);
                     metadata.needTrackRefresh = true;
                 }
@@ -256,6 +250,39 @@ class Basin{
 
     hemY(y){
         return this.SHem ? HEIGHT-y : y;
+    }
+
+    discardWeakTropicalWave(sys){
+        if(!(sys instanceof ActiveSystem)) return;
+
+        let storm = sys.fetchStorm();
+        storm.deathTime = this.tick;
+        if(storm.TC && storm.dissipationTime===undefined)
+            storm.dissipationTime = this.tick;
+        if(storm.inBasinTC && storm.exitTime===undefined)
+            storm.exitTime = this.tick;
+        storm.current = undefined;
+
+        // If the disturbance never became a tropical/subtropical cyclone,
+        // remove it from the in-memory season list entirely instead of keeping
+        // an invisible dead disturbance around.
+        if(!storm.TC){
+            let season = this.fetchSeason(-1,true,true);
+            for(let i=season.systems.length-1;i>=0;i--){
+                let entry = season.systems[i];
+                let sameStorm = entry===storm;
+                if(entry instanceof StormRef)
+                    sameStorm = entry.fetch()===storm;
+                if(sameStorm)
+                    season.systems.splice(i,1);
+            }
+            if(storm.id!==undefined)
+                delete season.idSystemCache[storm.id];
+            season.modified = true;
+        }
+
+        if(selectedStorm===storm)
+            selectedStorm = undefined;
     }
 
     spawn(data){

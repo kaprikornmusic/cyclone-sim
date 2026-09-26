@@ -184,7 +184,104 @@ SPAWN_RULES.defaults.doSpawn = function(b){
 
 // -- Normal Mode -- //
 
-SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = SPAWN_RULES.defaults.doSpawn;
+SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
+    // Atlantic easterly waves. Most start in the eastern Atlantic, but some
+    // are introduced farther west to represent waves that survived into the
+    // central Atlantic before becoming notable disturbances.
+    'atl_tw': {
+        inherit: 'tw',
+        x: (b)=>{
+            let lon = random()<0.6 ? random(-35,-15) : random(-65,-35);
+            return Coordinate.convertToXY(b.mapType,lon,12).x;
+        },
+        y: (b)=>Coordinate.convertToXY(b.mapType,-30,random(7,19)).y,
+        pressure: [1004,1019],
+        windSpeed: [10,30],
+        organization: [0.02,0.28]
+    },
+
+    // Western Caribbean / Gulf tropical disturbances. These remain tropical
+    // disturbances in the simulator, but allow genesis much farther west.
+    'atl_west': {
+        inherit: 'tw',
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-92,-62),16).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-75,random(10,24)).y,
+        pressure: [1004,1017],
+        windSpeed: [10,30],
+        organization: [0.08,0.32]
+    },
+
+    // Decaying frontal lows near the Gulf / southeastern United States.
+    // They begin non-tropical and may acquire a warm core over warm water.
+    'atl_front': {
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-96,-68),27).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-80,random(22,32)).y,
+        pressure: [1003,1017],
+        windSpeed: [15,30],
+        type: EXTROP,
+        organization: [0.08,0.32],
+        lowerWarmCore: [0.35,0.58],
+        upperWarmCore: [0.12,0.32],
+        depth: [0.68,0.95]
+    },
+
+    // Non-tropical/subtropical lows over the western and central Atlantic.
+    // These are deliberately closer to a warm-core transition than ordinary
+    // extratropical cyclones, making subtropical genesis north of 25N possible.
+    'atl_subtrop': {
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-76,-34),31).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-55,random(25,38)).y,
+        pressure: [1000,1015],
+        windSpeed: [15,35],
+        type: EXTROP,
+        organization: [0.12,0.38],
+        lowerWarmCore: [0.48,0.68],
+        upperWarmCore: [0.22,0.48],
+        depth: [0.55,0.85]
+    }
+};
+
+SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
+    const mapDef = MAP_TYPES[b.mapType];
+    const isAtlantic = mapDef.form === 'earth' && mapDef.mainSubBasin === EARTH_SB_IDS.atl;
+
+    // Keep the original Normal behavior for every non-Atlantic map.
+    if(!isAtlantic){
+        SPAWN_RULES.defaults.doSpawn(b);
+        return;
+    }
+
+    const peak = sq((seasonCurve(b.tick)+1)/2);
+    const month = b.tickMoment().month(); // 0 = January
+    const shoulderSeason = month===4 || month===5 || month===9 || month===10;
+    const coreSeason = month>=6 && month<=8;
+
+    // Tropical/easterly-wave family: still the dominant source, but no longer
+    // the only practical path to Atlantic tropical cyclogenesis.
+    if(random()<0.010*peak)
+        b.spawnArchetype('atl_tw');
+
+    // Western Caribbean / Gulf disturbances become more common near the
+    // climatological peak but can occur throughout the hurricane season.
+    if(random()<0.0020*peak)
+        b.spawnArchetype('atl_west');
+
+    // Frontal and subtropical genesis is favored in the early/late-season
+    // shoulders while remaining possible during July-September.
+    const frontalFactor = shoulderSeason ? 1 : coreSeason ? 0.60 : 0.12;
+    const subtropFactor = shoulderSeason ? 0.90 : coreSeason ? 0.70 : 0.15;
+
+    if(random()<0.0025*frontalFactor)
+        b.spawnArchetype('atl_front');
+
+    if(random()<0.0025*subtropFactor)
+        b.spawnArchetype('atl_subtrop');
+
+    // Retain ordinary baroclinic systems so the broader weather pattern and
+    // occasional tropical transition from a mature extratropical low remain.
+    if(random()<0.01-0.002*seasonCurve(b.tick))
+        b.spawnArchetype('ex');
+};
 
 // -- Hyper Mode -- //
 

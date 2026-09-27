@@ -1691,7 +1691,7 @@ UI.init = function(){
                 info_row('Peak wind speed', 'N/A');
             info_row('ACE', S.ACE);
             info_row('Damage', damageDisplayNumber(S.damage));
-            info_row('Deaths', S.deaths);
+            info_row('Deaths', round(S.deaths));
             info_row('Landfalls', S.landfalls);
         }else{
             name = seasonName(S);
@@ -1708,7 +1708,7 @@ UI.init = function(){
                     info_row(statName, counters[cNumber]);
                 info_row('Total ACE', stats.ACE);
                 info_row('Damage', damageDisplayNumber(stats.damage));
-                info_row('Deaths', stats.deaths);
+                info_row('Deaths', round(stats.deaths));
                 info_row('Landfalls', stats.landfalls);
                 if(stats.most_intense){
                     let most_intense = stats.most_intense.fetch();

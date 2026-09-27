@@ -1273,17 +1273,38 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             shearCeiling += 4;
         }
 
+        // The central/eastern subtropical Atlantic was still underproducing
+        // tropical/subtropical cyclones. Broaden the marginal environment
+        // window there without increasing the number of spawned systems.
+        if(centralAtlanticCorridor){
+            sstFloor -= latitude>=35 ? 1.4 : 0.9;
+            shearCeiling += 4;
+        }
+
         let favorability =
             map(SST,sstFloor,29.5,0,1,true) *
-            map(moisture,june ? 0.33 : 0.38,0.74,0,1,true) *
+            map(
+                moisture,
+                centralAtlanticCorridor ?
+                    (june ? 0.27 : 0.31) :
+                    (june ? 0.33 : 0.38),
+                0.74,0,1,true
+            ) *
             map(shear,shearCeiling,5,0,1,true);
 
         let juneBoost = june ? 2.25 : 1;
         let northBoost = map(latitude,20,45,1,1.90,true);
+        let corridorWaveBoost =
+            centralAtlanticCorridor ? 1.32 : 1;
 
         favorability = min(
-            june ? 2.25 : 1.75,
-            favorability*juneBoost*northBoost
+            centralAtlanticCorridor ?
+                (june ? 2.55 : 2.10) :
+                (june ? 2.25 : 1.75),
+            favorability*
+            juneBoost*
+            northBoost*
+            corridorWaveBoost
         );
 
         if(favorability>0){
@@ -1351,14 +1372,22 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             // Strongest support is given to weaker depressions so they can
             // consolidate instead of stalling indefinitely near 20-30 kt.
             let weakTdBoost = map(sys.windSpeed,18,34,1.25,0.95,true);
-            let tdBoost = tdFavorability*weakTdBoost;
+            let corridorConsolidation =
+                centralAtlanticCorridor ? 1.24 : 1;
+            let tdBoost =
+                tdFavorability*
+                weakTdBoost*
+                corridorConsolidation;
 
             sys.organization = constrain(
-                sys.organization + 0.020*tdBoost,
+                sys.organization +
+                (centralAtlanticCorridor ? 0.023 : 0.020)*tdBoost,
                 0,1
             );
-            sys.pressure -= 0.50*tdBoost;
-            sys.windSpeed += 0.55*tdBoost;
+            sys.pressure -=
+                (centralAtlanticCorridor ? 0.58 : 0.50)*tdBoost;
+            sys.windSpeed +=
+                (centralAtlanticCorridor ? 0.68 : 0.55)*tdBoost;
             sys.depth = lerp(
                 sys.depth,
                 sys.type===SUBTROP ? 0.24 : 0.16,
@@ -1456,29 +1485,59 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
 
     // Don/Nadine/Leslie-style systems can remain tropical or subtropical for
     // days over marginal waters if their core stays organized and shear is
-    // not excessive. This is maintenance, not a strong intensification boost.
+    // not excessive. Extend this maintenance through the central Atlantic
+    // corridor so named storms do not disappear from that region too quickly.
     if(
-        latitude>=32 &&
-        latitude<=46 &&
+        (
+            (latitude>=32 && latitude<=46) ||
+            centralAtlanticCorridor
+        ) &&
         (sys.type===TROP || sys.type===SUBTROP) &&
         sys.windSpeed>=34
     ){
+        let corridorMaintenance = centralAtlanticCorridor;
         let sustainFavorability =
-            map(SST,18.8,25.5,0,1,true) *
-            map(moisture,0.25,0.65,0,1,true) *
-            map(shear,34,7,0,1,true);
+            map(
+                SST,
+                corridorMaintenance ? 17.8 : 18.8,
+                25.5,0,1,true
+            ) *
+            map(
+                moisture,
+                corridorMaintenance ? 0.21 : 0.25,
+                0.65,0,1,true
+            ) *
+            map(
+                shear,
+                corridorMaintenance ? 38 : 34,
+                7,0,1,true
+            );
 
         if(sustainFavorability>0){
+            let sustainBoost =
+                sustainFavorability*
+                (corridorMaintenance ? 1.28 : 1);
+
             sys.organization = constrain(
-                sys.organization + 0.0045*sustainFavorability,
+                sys.organization + 0.0050*sustainBoost,
                 0,1
             );
-            sys.pressure -= 0.10*sustainFavorability;
-            sys.windSpeed += 0.07*sustainFavorability;
+            sys.lowerWarmCore = lerp(
+                sys.lowerWarmCore,
+                max(sys.lowerWarmCore,0.68),
+                0.010*sustainBoost
+            );
+            sys.upperWarmCore = lerp(
+                sys.upperWarmCore,
+                max(sys.upperWarmCore,0.50),
+                0.008*sustainBoost
+            );
+            sys.pressure -= 0.10*sustainBoost;
+            sys.windSpeed += 0.07*sustainBoost;
             sys.depth = lerp(
                 sys.depth,
-                0.22,
-                0.008*sustainFavorability
+                sys.type===SUBTROP ? 0.28 : 0.22,
+                0.008*sustainBoost
             );
         }
     }
@@ -1636,8 +1695,35 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
             return;
         }
 
-        // Hysteresis: a developed depression must deteriorate more clearly
-        // before it is allowed to fall back to a tropical wave.
+        // Named tropical cyclones should normally transition through a
+        // subtropical phase before becoming post-tropical. A hurricane may
+        // still transition directly only after an unmistakable warm-core
+        // collapse; modest structural fluctuations are not enough.
+        if(sys.windSpeed>=34){
+            let severeWarmCoreCollapse =
+                sys.lowerWarmCore<
+                (sys.windSpeed>=64 ? 0.33 : 0.36);
+            let severeStructureCollapse =
+                sys.organization<0.12 &&
+                sys.windSpeed<42;
+
+            if(
+                !severeWarmCoreCollapse &&
+                !severeStructureCollapse
+            ){
+                sys.type =
+                    (
+                        sys.lowerWarmCore<0.51 ||
+                        sys.upperWarmCore<0.48
+                    ) ?
+                        SUBTROP :
+                        TROP;
+                return;
+            }
+        }
+
+        // Depression-stage systems retain the existing weaker-system
+        // hysteresis after the named-storm safeguards above.
         sys.type =
             sys.lowerWarmCore<0.51 ? EXTROP :
             ((sys.organization<0.30 && sys.windSpeed<40) || sys.windSpeed<18) ?
@@ -1664,12 +1750,16 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
             }
         }
 
+        let namedSubtropical = sys.windSpeed>=34;
         let severeStructuralCollapse =
-            sys.lowerWarmCore<0.40 ||
+            sys.lowerWarmCore<
+                (namedSubtropical ? 0.30 : 0.38) ||
             sys.windSpeed<15 ||
             (
-                sys.organization<0.18 &&
-                sys.windSpeed<28
+                sys.organization<
+                    (namedSubtropical ? 0.10 : 0.18) &&
+                sys.windSpeed<
+                    (namedSubtropical ? 34 : 28)
             );
 
         if(

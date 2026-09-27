@@ -244,12 +244,8 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // These are deliberately closer to a warm-core transition than ordinary
     // extratropical cyclones, making subtropical genesis north of 25N possible.
     'atl_subtrop': {
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-76,-28),34).x,
-        y: (b)=>Coordinate.convertToXY(
-            b.mapType,
-            -52,
-            random()<0.38 ? random(35,45) : random(26,38)
-        ).y,
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-76,-30),32).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-54,random(26,38)).y,
         pressure: [997,1012],
         windSpeed: [22,37],
         type: EXTROP,
@@ -257,6 +253,21 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
         lowerWarmCore: [0.60,0.78],
         upperWarmCore: [0.44,0.60],
         depth: [0.35,0.62]
+    },
+
+    // Cut-off / occluded lows over the north-central Atlantic. These start
+    // partly warm-core and fairly shallow, providing a Don/Leslie-style
+    // route to subtropical or tropical development around 33-45N.
+    'atl_midlat': {
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-62,-26),37).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-45,random(33,45)).y,
+        pressure: [992,1008],
+        windSpeed: [24,40],
+        type: EXTROP,
+        organization: [0.35,0.58],
+        lowerWarmCore: [0.66,0.84],
+        upperWarmCore: [0.40,0.58],
+        depth: [0.28,0.52]
     }
 };
 
@@ -305,8 +316,12 @@ SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
     if(random()<0.0038*frontalFactor)
         b.spawnArchetype('atl_front');
 
-    if(random()<0.0038*subtropFactor)
-        b.spawnArchetype('atl_subtrop');
+    if(random()<0.0038*subtropFactor){
+        if(random()<0.48)
+            b.spawnArchetype('atl_midlat');
+        else
+            b.spawnArchetype('atl_subtrop');
+    }
 
     // Retain ordinary baroclinic systems so the broader weather pattern and
     // occasional tropical transition from a mature extratropical low remain.
@@ -1030,6 +1045,40 @@ STORM_ALGORITHM.defaults.steering = function(sys,vec,u){
     vec.add(sys.interaction.fuji);
 };
 
+STORM_ALGORITHM[SIM_MODE_NORMAL].steering = function(sys,vec,u){
+    STORM_ALGORITHM.defaults.steering(sys,vec,u);
+
+    const mapDef = MAP_TYPES[sys.basin.mapType];
+    const isAtlantic =
+        mapDef.form === 'earth' &&
+        mapDef.mainSubBasin === EARTH_SB_IDS.atl;
+
+    if(!isAtlantic) return;
+
+    let c = sys.coord();
+    let latitude = abs(c.latitude);
+    let longitude = c.longitude;
+    let midLatitudeCyclone =
+        latitude>=31 &&
+        latitude<=47 &&
+        longitude>=-75 &&
+        longitude<=-15 &&
+        sys.depth<0.65 &&
+        (
+            sys.type===EXTROP ||
+            sys.type===SUBTROP ||
+            sys.type===TROPWAVE ||
+            sys.type===TROP
+        );
+
+    if(midLatitudeCyclone){
+        // Cut-off lows and shallow cyclones tend to linger and respond to
+        // evolving blocking patterns instead of racing with the westerlies.
+        let lingerFactor = map(sys.depth,0,0.65,0.64,0.82,true);
+        vec.mult(lingerFactor);
+    }
+};
+
 // -- Core -- //
 
 STORM_ALGORITHM.defaults.core = function(sys,u){
@@ -1154,25 +1203,25 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     // enough to complete tropical transition instead of being immediately
     // stripped back to extratropical structure by the jet-stream term.
     if(
-        latitude>=35 &&
-        latitude<=45 &&
+        latitude>=32 &&
+        latitude<=46 &&
         (sys.type===TROPWAVE || sys.type===TROP || sys.type===SUBTROP)
     ){
         let highLatWarmCore =
-            map(SST,19,25.5,0,1,true) *
-            map(moisture,0.28,0.65,0,1,true) *
-            map(shear,32,7,0,1,true);
+            map(SST,18.8,25.5,0,1,true) *
+            map(moisture,0.26,0.65,0,1,true) *
+            map(shear,34,7,0,1,true);
 
         if(highLatWarmCore>0){
             sys.lowerWarmCore = lerp(
                 sys.lowerWarmCore,
                 max(sys.lowerWarmCore,0.82),
-                0.030*highLatWarmCore
+                0.038*highLatWarmCore
             );
             sys.upperWarmCore = lerp(
                 sys.upperWarmCore,
                 max(sys.lowerWarmCore,0.72),
-                0.034*highLatWarmCore
+                0.042*highLatWarmCore
             );
             sys.organization = constrain(
                 sys.organization + 0.005*highLatWarmCore,
@@ -1258,6 +1307,35 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             sys.pressure -= 0.50*tdBoost;
             sys.windSpeed += 0.55*tdBoost;
             sys.depth = lerp(sys.depth,0.16,0.012*tdBoost);
+        }
+    }
+
+    // Don/Nadine/Leslie-style systems can remain tropical or subtropical for
+    // days over marginal waters if their core stays organized and shear is
+    // not excessive. This is maintenance, not a strong intensification boost.
+    if(
+        latitude>=32 &&
+        latitude<=46 &&
+        (sys.type===TROP || sys.type===SUBTROP) &&
+        sys.windSpeed>=34
+    ){
+        let sustainFavorability =
+            map(SST,18.8,25.5,0,1,true) *
+            map(moisture,0.25,0.65,0,1,true) *
+            map(shear,34,7,0,1,true);
+
+        if(sustainFavorability>0){
+            sys.organization = constrain(
+                sys.organization + 0.0045*sustainFavorability,
+                0,1
+            );
+            sys.pressure -= 0.10*sustainFavorability;
+            sys.windSpeed += 0.07*sustainFavorability;
+            sys.depth = lerp(
+                sys.depth,
+                0.22,
+                0.008*sustainFavorability
+            );
         }
     }
 };
@@ -1422,6 +1500,23 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
                 (sys.upperWarmCore<0.48 ? EXTROP : TROPWAVE) :
                 (sys.upperWarmCore<0.48 ? SUBTROP : TROP);
         return;
+    }
+
+    if(sys.type===SUBTROP){
+        let c = sys.coord();
+        let latitude = abs(c.latitude);
+
+        if(latitude>=32 && latitude<=46){
+            // Mid-latitude subtropical storms need a clearer structural
+            // collapse before becoming extratropical, and can tropicalize
+            // once the upper warm core becomes sufficiently established.
+            sys.type =
+                sys.lowerWarmCore<0.46 ? EXTROP :
+                ((sys.organization<0.28 && sys.windSpeed<45) || sys.windSpeed<18) ?
+                    (sys.upperWarmCore<0.42 ? EXTROP : TROPWAVE) :
+                    (sys.upperWarmCore<0.52 ? SUBTROP : TROP);
+            return;
+        }
     }
 
     if(sys.type===EXTROP){

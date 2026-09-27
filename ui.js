@@ -1839,7 +1839,7 @@ UI.init = function(){
 
     timeline = (function(){
         const BOX_WIDTH = WIDTH;
-        const BOX_HEIGHT = (HEIGHT-topBar.height-bottomBar.height)*2/3;
+        const BOX_HEIGHT = (HEIGHT-topBar.height-bottomBar.height)*0.5;
         let months = 12;
         let sMonth = 0;
         let parts = [];
@@ -1926,7 +1926,7 @@ UI.init = function(){
         const rBound = BOX_WIDTH*0.95;
         const tBound = BOX_HEIGHT*0.2;
         const bBound = BOX_HEIGHT*0.93;
-        const TIMELINE_ROW_COUNT = 7;
+        const TIMELINE_ROW_COUNT = 8;
         const TIMELINE_BAR_HEIGHT = 10;
         const timelineRowGap =
             (bBound-tBound-TIMELINE_BAR_HEIGHT)/(TIMELINE_ROW_COUNT-1);

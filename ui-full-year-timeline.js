@@ -2022,7 +2022,7 @@ UI.init = function(){
                 }
                 strokeWeight(1);
             }else{
-                text('Timeline of ' + seasonName(target), BOX_WIDTH * 0.5, BOX_HEIGHT * 0.03);
+                text('Timeline of ' + seasonName(target) + '  •  Full Year · Jan–Dec', BOX_WIDTH * 0.5, BOX_HEIGHT * 0.03);
                 stroke(COLORS.UI.text);
                 line(lBound,bBound,rBound,bBound);
                 line(lBound,bBound,lBound,tBound);

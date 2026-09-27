@@ -5,15 +5,60 @@ function refreshTracks(force){
     if(selectedStorm) selectedStorm.renderTrack();
     else if(simSettings.trackMode===2){
         let target = UI.viewBasin.getSeason(viewTick);
-        let valid = sys=>(
-            sys.inBasinTC &&
-            (
-                UI.viewBasin.getSeason(sys.enterTime)===target ||
-                UI.viewBasin.getSeason(sys.enterTime)<target &&
-                (sys.exitTime===undefined || UI.viewBasin.getSeason(sys.exitTime-1)>=target)
-            )
-        );
-        for(let s of UI.viewBasin.fetchSeason(viewTick,true,true).forSystems()) if(valid(s)) s.renderTrack();
+        let mainSubBasin = UI.viewBasin.mainSubBasin;
+
+        // Use the exact classification flag that feeds the Season Summary
+        // "Depressions" counter. If a system contributed to that counter,
+        // it must also receive a Season Summary track.
+        let valid = sys=>{
+            if(
+                sys &&
+                sys.subBasinData instanceof Function &&
+                sys.subBasinData(mainSubBasin,target,0)
+            ) return true;
+
+            // Backwards-compatible fallback for older saves that may not
+            // contain sub-basin classification logs.
+            if(sys && sys.record){
+                for(let i=0;i<sys.record.length;i++){
+                    let adv = sys.record[i];
+                    if(!tropOrSub(adv.type))
+                        continue;
+
+                    let tick = sys.get_tick_from_record_index(i);
+                    let sub = land.getSubBasin(adv.coord());
+                    if(
+                        UI.viewBasin.subInBasin(sub) &&
+                        UI.viewBasin.getSeason(tick)===target
+                    ) return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Gather from the target season plus currently active systems, then
+        // de-duplicate. This covers active/current-season systems and
+        // cross-season references without relying on one storage path.
+        let candidates = [];
+        let seen = new Set();
+        let addCandidate = sys=>{
+            if(!sys || seen.has(sys))
+                return;
+            seen.add(sys);
+            candidates.push(sys);
+        };
+
+        let season = UI.viewBasin.fetchSeason(viewTick,true,true);
+        for(let sys of season.forSystems())
+            addCandidate(sys);
+
+        for(let active of UI.viewBasin.activeSystems)
+            addCandidate(active.fetchStorm());
+
+        for(let sys of candidates)
+            if(valid(sys))
+                sys.renderTrack();
     }else if(UI.viewBasin.viewingPresent()) for(let s of UI.viewBasin.activeSystems) s.fetchStorm().renderTrack();
     else for(let s of UI.viewBasin.fetchSeason(viewTick,true,true).forSystems()) s.renderTrack();
 }

@@ -244,8 +244,8 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // These are deliberately closer to a warm-core transition than ordinary
     // extratropical cyclones, making subtropical genesis north of 25N possible.
     'atl_subtrop': {
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-76,-30),32).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-54,random(26,38)).y,
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-70,-22),32).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-46,random(27,39)).y,
         pressure: [997,1012],
         windSpeed: [22,37],
         type: EXTROP,
@@ -259,8 +259,8 @@ SPAWN_RULES[SIM_MODE_NORMAL].archetypes = {
     // partly warm-core and fairly shallow, providing a Don/Leslie-style
     // route to subtropical or tropical development around 33-45N.
     'atl_midlat': {
-        x: (b)=>Coordinate.convertToXY(b.mapType,random(-62,-26),37).x,
-        y: (b)=>Coordinate.convertToXY(b.mapType,-45,random(33,45)).y,
+        x: (b)=>Coordinate.convertToXY(b.mapType,random(-58,-16),37).x,
+        y: (b)=>Coordinate.convertToXY(b.mapType,-38,random(31,44)).y,
         pressure: [992,1008],
         windSpeed: [24,40],
         type: EXTROP,
@@ -1165,7 +1165,14 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     let SST = u.f("SST");
     let moisture = u.f("moisture");
     let shear = u.f("shear").mag()+sys.interaction.shear;
-    let latitude = abs(sys.coord().latitude);
+    let coord = sys.coord();
+    let latitude = abs(coord.latitude);
+    let longitude = coord.longitude;
+    let centralAtlanticCorridor =
+        latitude>=28 &&
+        latitude<=44 &&
+        longitude>=-58 &&
+        longitude<=-12;
     let month = sys.basin.tickMoment().month();
     let june = month===5;
 
@@ -1185,9 +1192,14 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             map(latitude,15,45,0.95,1.65,true);
 
         let highLatTransitionBoost = map(latitude,32,45,1,1.45,true);
+        let centralAtlanticTransitionBoost =
+            centralAtlanticCorridor ? 1.18 : 1;
         transitionFavorability = min(
-            june ? 2.35 : 1.95,
-            transitionFavorability*(june ? 1.80 : 1.20)*highLatTransitionBoost
+            june ? 2.45 : 2.05,
+            transitionFavorability*
+            (june ? 1.80 : 1.20)*
+            highLatTransitionBoost*
+            centralAtlanticTransitionBoost
         );
 
         if(transitionFavorability>0){
@@ -1282,10 +1294,13 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             sys.pressure -= 0.36*favorability;
             sys.windSpeed += 0.32*favorability;
         }
-    }else if(sys.type===TROP && sys.windSpeed<34){
-        // Depression-only consolidation assist. Once genesis has occurred,
-        // a coherent tropical depression can continue strengthening in a
-        // somewhat broader range of moisture/shear than a precursor wave.
+    }else if(
+        (sys.type===TROP || sys.type===SUBTROP) &&
+        sys.windSpeed<34
+    ){
+        // Depression-only consolidation assist. This applies to both
+        // tropical and subtropical depressions; previously SDs had no
+        // equivalent support and often stalled below storm strength.
         let tdSstFloor =
             latitude>=35 ? 19.0 :
             latitude>=24 ? 21.8 : 23.5;
@@ -1298,6 +1313,14 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             tdShearCeiling += 3;
         }
 
+        // In the central/eastern subtropical Atlantic, allow coherent
+        // depressions to consolidate over somewhat more marginal water/shear.
+        // This targets the 28-44N, 58-12W gap without boosting the whole basin.
+        if(centralAtlanticCorridor){
+            tdSstFloor -= sys.type===SUBTROP ? 1.2 : 0.6;
+            tdShearCeiling += sys.type===SUBTROP ? 4 : 2;
+        }
+
         let tdFavorability =
             map(SST,tdSstFloor,29.5,0,1,true) *
             map(moisture,june ? 0.28 : 0.33,0.70,0,1,true) *
@@ -1305,9 +1328,23 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
 
         let juneTdBoost = june ? 1.55 : 1;
         let northTdBoost = map(latitude,20,45,1,1.65,true);
+        let corridorBoost = 1;
+        if(centralAtlanticCorridor){
+            let nearStormThresholdBoost =
+                map(sys.windSpeed,20,34,1.38,1.12,true);
+            corridorBoost =
+                nearStormThresholdBoost*
+                (sys.type===SUBTROP ? 1.18 : 1.08);
+        }
+
         tdFavorability = min(
-            june ? 1.95 : 1.55,
-            tdFavorability*juneTdBoost*northTdBoost
+            centralAtlanticCorridor ?
+                (june ? 2.25 : 1.90) :
+                (june ? 1.95 : 1.55),
+            tdFavorability*
+            juneTdBoost*
+            northTdBoost*
+            corridorBoost
         );
 
         if(tdFavorability>0){
@@ -1322,7 +1359,11 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             );
             sys.pressure -= 0.50*tdBoost;
             sys.windSpeed += 0.55*tdBoost;
-            sys.depth = lerp(sys.depth,0.16,0.012*tdBoost);
+            sys.depth = lerp(
+                sys.depth,
+                sys.type===SUBTROP ? 0.24 : 0.16,
+                0.012*tdBoost
+            );
         }
     }
 

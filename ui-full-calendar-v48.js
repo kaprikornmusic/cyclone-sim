@@ -2078,7 +2078,7 @@ UI.init = function(){
                     let y = timelineRowY(i);
                     let mx = getMouseX()-this.getX();
                     let my = getMouseY()-this.getY();
-                    textSize(12);
+                    textSize(10);
                     if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+10) stroke(255);
                     else noStroke();
                     for(let j=0;j<p.segments.length;j++){
@@ -2099,7 +2099,7 @@ UI.init = function(){
                 let y = timelineRowY(i);
                 let mx = getMouseX()-this.getX();
                 let my = getMouseY()-this.getY();
-                textSize(12);
+                textSize(10);
                 if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+10){
                     newTarget = p.storm;
                     break;

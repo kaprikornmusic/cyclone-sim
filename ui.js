@@ -1909,11 +1909,8 @@ UI.init = function(){
                             seg.startX = map(seg.startTick,beginPlotTick,endPlotTick,0,plotWidth);
                             seg.endX = map(seg.endTick,beginPlotTick,endPlotTick,0,plotWidth);
                         }
-                        // Wikipedia-style layout: storms are already sorted by
-                        // genesis/entry time, so place each successive storm on the
-                        // next row down. Only after reaching the bottom of the
-                        // timeline do we wrap back to the first row.
-                        part.row = parts.length % maxRowFit;
+                        // Storm order is already chronological. Vertical placement
+                        // is derived from the final sorted index at render time.
                         parts.push(part);
                     }
                 };
@@ -1937,7 +1934,13 @@ UI.init = function(){
         const rBound = BOX_WIDTH*0.95;
         const tBound = BOX_HEIGHT*0.2;
         const bBound = BOX_HEIGHT*0.93;
-        const maxRowFit = Math.floor((bBound-tBound)/15);
+        const TIMELINE_ROW_HEIGHT = 15;
+        const timelineRowCount = Math.max(
+            1,
+            Math.floor((bBound-tBound-10)/TIMELINE_ROW_HEIGHT)+1
+        );
+        const timelineRowY = index=>
+            tBound+(index%timelineRowCount)*TIMELINE_ROW_HEIGHT;
 
         let timelineBox = timeline_container.append(false,0,0,BOX_WIDTH,BOX_HEIGHT,function(s){
             let target = stormInfoPanel.target;
@@ -2043,7 +2046,7 @@ UI.init = function(){
                 noStroke();
                 for(let i=0;i<parts.length;i++){
                     let p = parts[i];
-                    let y = tBound+(p.row % maxRowFit)*15;
+                    let y = timelineRowY(i);
                     let mx = getMouseX()-this.getX();
                     let my = getMouseY()-this.getY();
                     textSize(12);
@@ -2064,7 +2067,7 @@ UI.init = function(){
             let newTarget;
             for(let i=parts.length-1;i>=0;i--){
                 let p = parts[i];
-                let y = tBound+(p.row % maxRowFit)*15;
+                let y = timelineRowY(i);
                 let mx = getMouseX()-this.getX();
                 let my = getMouseY()-this.getY();
                 textSize(12);

@@ -1630,6 +1630,32 @@ STORM_ALGORITHM[SIM_MODE_EXPERIMENTAL].core = function(sys,u){
 
 STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     let storm = sys.fetchStorm();
+    let lastAdvisory =
+        storm && storm.record.length ?
+            storm.record[storm.record.length-1] :
+            null;
+    let previousAdvisory =
+        storm && storm.record.length>1 ?
+            storm.record[storm.record.length-2] :
+            null;
+
+    // A hurricane that begins structural transition must leave at least two
+    // visible subtropical advisory points before post-tropical classification.
+    // This prevents hourly TROP -> SUBTROP -> EXTROP changes from collapsing
+    // into a direct Hurricane -> Post-tropical jump on the six-hour track.
+    let hurricaneSubtropicalBridge =
+        (
+            lastAdvisory &&
+            lastAdvisory.type===TROP &&
+            lastAdvisory.windSpeed>=64
+        ) ||
+        (
+            lastAdvisory &&
+            lastAdvisory.type===SUBTROP &&
+            previousAdvisory &&
+            previousAdvisory.type===TROP &&
+            previousAdvisory.windSpeed>=64
+        );
 
     if(sys.type===TROPWAVE){
         let waveAdvisories = 0;
@@ -1695,14 +1721,36 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
             return;
         }
 
+        // If the last recorded advisory was a hurricane, any loss of
+        // tropical structure starts a mandatory subtropical bridge. Do not
+        // allow even a severe hourly warm-core collapse to skip that stage.
+        let lastAdvisoryWasHurricane =
+            lastAdvisory &&
+            lastAdvisory.type===TROP &&
+            lastAdvisory.windSpeed>=64;
+        let tropicalStructureDeteriorating =
+            sys.lowerWarmCore<0.51 ||
+            sys.upperWarmCore<0.48 ||
+            (
+                sys.organization<0.30 &&
+                sys.windSpeed<45
+            );
+
+        if(
+            lastAdvisoryWasHurricane &&
+            tropicalStructureDeteriorating
+        ){
+            sys.type = SUBTROP;
+            return;
+        }
+
         // Named tropical cyclones should normally transition through a
-        // subtropical phase before becoming post-tropical. A hurricane may
-        // still transition directly only after an unmistakable warm-core
-        // collapse; modest structural fluctuations are not enough.
+        // subtropical phase before becoming post-tropical. Direct transition
+        // remains possible for non-hurricane tropical cyclones only after an
+        // unmistakable structural collapse.
         if(sys.windSpeed>=34){
             let severeWarmCoreCollapse =
-                sys.lowerWarmCore<
-                (sys.windSpeed>=64 ? 0.33 : 0.36);
+                sys.lowerWarmCore<0.36;
             let severeStructureCollapse =
                 sys.organization<0.12 &&
                 sys.windSpeed<42;
@@ -1735,6 +1783,11 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     if(sys.type===SUBTROP){
         let c = sys.coord();
         let latitude = abs(c.latitude);
+
+        if(hurricaneSubtropicalBridge){
+            sys.type = SUBTROP;
+            return;
+        }
 
         // Count the current consecutive subtropical advisory run. A newly
         // formed subtropical cyclone must remain structurally subtropical long

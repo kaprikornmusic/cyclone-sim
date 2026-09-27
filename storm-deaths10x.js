@@ -291,12 +291,9 @@ class Storm{
     }
 
     renderTrack(newestSegment){
-        // Season Summary should contain only systems that actually reached
-        // tropical-storm strength. Waves/depressions that never reached
-        // 34 kt as a fully tropical cyclone stay out of the summary map.
-        if(simSettings.trackMode===2 && !this.reachedTropicalStorm())
-            return;
-
+        // Season Summary includes every system that reached tropical or
+        // subtropical cyclone status. The summary caller filters out systems
+        // that remained tropical waves for their entire lifetime.
         if(simSettings.trackMode!==3){
             const drawTrackLine = (a,b)=>{
                 tracks.push();

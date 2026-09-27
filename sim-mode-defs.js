@@ -1396,60 +1396,72 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     }
 
     if(sys.type===TROP && sys.windSpeed>=88){
-        // Moderate major-hurricane gate. Use a geometric mean rather than a
-        // straight product so a broadly favorable environment can support a
-        // major hurricane without requiring every ingredient to be near-perfect.
+        // Use a weighted environmental score instead of multiplying the
+        // ingredients. One merely marginal ingredient should not collapse the
+        // entire major-hurricane potential to zero.
         let majorSst =
-            map(SST,25.2,30.2,0,1,true);
+            map(SST,24.5,29.5,0,1,true);
         let majorMoisture =
-            map(moisture,0.38,0.78,0,1,true);
+            map(moisture,0.30,0.72,0,1,true);
         let majorShear =
-            map(shear,24,3,0,1,true);
+            map(shear,28,4,0,1,true);
         let majorOrganization =
-            map(sys.organization,0.60,0.96,0,1,true);
+            map(sys.organization,0.50,0.92,0,1,true);
 
-        let majorEnvironment = pow(
-            majorSst*
-            majorMoisture*
-            majorShear*
-            majorOrganization,
-            0.25
-        );
+        let majorEnvironment =
+            0.30*majorSst +
+            0.25*majorMoisture +
+            0.25*majorShear +
+            0.20*majorOrganization;
 
         let originalWind = sys.windSpeed;
-        const MAJOR_ENV_THRESHOLD = 0.62;
+        const MAJOR_HARD_BLOCK = 0.40;
+        const MAJOR_FULL_GATE = 0.52;
 
-        // Marginal environments still hold storms just below the 96 kt major
-        // threshold, but the threshold is now reachable under realistically
-        // favorable rather than nearly perfect conditions.
+        // Only clearly unfavorable environments are prevented from crossing
+        // the 96 kt major threshold. Moderately favorable environments can
+        // produce low-end Cat 3 storms, while better environments open the
+        // ceiling progressively into Cat 4-5 range.
         if(
-            majorEnvironment<MAJOR_ENV_THRESHOLD &&
+            majorEnvironment<MAJOR_HARD_BLOCK &&
             sys.windSpeed>=95.5
         ){
             sys.windSpeed = 95.4;
         }else{
-            // The ceiling opens gradually: a just-qualified environment
-            // favors low-end Cat 3, while increasingly favorable conditions
-            // permit Cat 4 and rare Cat 5 intensity.
             let environmentalCeiling = map(
                 majorEnvironment,
-                MAJOR_ENV_THRESHOLD,1,
-                103,155,
+                MAJOR_HARD_BLOCK,1,
+                100,155,
                 true
             );
 
             if(sys.windSpeed>environmentalCeiling){
                 let excess = sys.windSpeed-environmentalCeiling;
-                sys.windSpeed -= max(0.12,0.52*excess);
+                sys.windSpeed -= max(0.08,0.42*excess);
+            }
+
+            // A modest threshold brake around 96-105 kt avoids returning to
+            // the old situation where almost every hurricane became a major.
+            if(
+                sys.windSpeed>=96 &&
+                majorEnvironment<MAJOR_FULL_GATE
+            ){
+                let thresholdBrake =
+                    map(
+                        majorEnvironment,
+                        MAJOR_HARD_BLOCK,MAJOR_FULL_GATE,
+                        0.18,0.03,true
+                    );
+                sys.windSpeed -= thresholdBrake;
             }
 
             if(sys.windSpeed>=115){
                 let extremeBrake =
-                    map(sys.windSpeed,115,155,0.025,0.20,true) *
+                    map(sys.windSpeed,115,155,0.02,0.16,true) *
                     map(
                         majorEnvironment,
-                        MAJOR_ENV_THRESHOLD,1,
-                        0.85,0.22,true
+                        MAJOR_FULL_GATE,1,
+                        0.75,0.18,true
                     );
                 sys.windSpeed -= extremeBrake;
             }
@@ -1457,12 +1469,10 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
 
         let removedWind = max(0,originalWind-sys.windSpeed);
         if(removedWind>0){
-            // Lighter feedback than the previous over-restrictive gate so a
-            // storm can resume intensifying when its environment improves.
-            sys.pressure += 0.35*removedWind;
+            sys.pressure += 0.24*removedWind;
             sys.organization = constrain(
                 sys.organization-
-                0.0010*removedWind*(1-majorEnvironment),
+                0.0006*removedWind*(1-majorEnvironment),
                 0,1
             );
         }

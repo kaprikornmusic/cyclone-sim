@@ -1877,7 +1877,7 @@ UI.init = function(){
                         let part = {};
                         part.storm = t;
                         part.segments = [];
-                        part.label = t.getNameByTick(-2);
+                        part.label = t.getNameByTick(-1);
                         let aSegment;
                         for(let q=0;q<t.record.length;q++){
                             let rt = ceil(t.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS + q*ADVISORY_TICKS;

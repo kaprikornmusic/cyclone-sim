@@ -30,7 +30,6 @@ class Storm{
         this.deaths = 0;
         this.damage = 0;
         this.landfalls = 0;
-        this.landfallPoints = [];
         if(!this.current && data instanceof LoadData) this.load(data);
     }
 
@@ -310,7 +309,7 @@ class Storm{
             const drawTrackPoint = (adv)=>{
                 let pos = adv.pos;
                 let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
-                const r = 2.5;
+                const r = 2.0;
 
                 tracks.push();
                 tracks.noStroke();
@@ -347,101 +346,6 @@ class Storm{
                 tracks.pop();
             };
 
-            const landAtTrackPos = (pos)=>{
-                let c = Coordinate.convertFromXY(
-                    this.basin.mapType,
-                    pos.x,
-                    pos.y
-                );
-                return land.get(c)>0;
-            };
-
-            const findLandfallPoints = (a,b)=>{
-                // Advisory fixes are six hours apart, so scan along the segment
-                // and refine every water -> land crossing to place the marker
-                // close to the coastline instead of at the next inland fix.
-                const STEPS = 32;
-                const REFINE_STEPS = 7;
-                let points = [];
-                let prevFrac = 0;
-                let prevLand = landAtTrackPos(a);
-
-                for(let i=1;i<=STEPS;i++){
-                    let frac = i/STEPS;
-                    let pos = {
-                        x: lerp(a.x,b.x,frac),
-                        y: lerp(a.y,b.y,frac)
-                    };
-                    let currLand = landAtTrackPos(pos);
-
-                    if(!prevLand && currLand){
-                        let lo = prevFrac;
-                        let hi = frac;
-
-                        for(let j=0;j<REFINE_STEPS;j++){
-                            let mid = (lo+hi)/2;
-                            let midPos = {
-                                x: lerp(a.x,b.x,mid),
-                                y: lerp(a.y,b.y,mid)
-                            };
-
-                            if(landAtTrackPos(midPos))
-                                hi = mid;
-                            else
-                                lo = mid;
-                        }
-
-                        points.push({
-                            x: lerp(a.x,b.x,hi),
-                            y: lerp(a.y,b.y,hi)
-                        });
-                    }
-
-                    prevFrac = frac;
-                    prevLand = currLand;
-                }
-
-                return points;
-            };
-
-            const drawLandfallMarker = (pos)=>{
-                const r = 3.5;
-
-                tracks.push();
-                tracks.stroke(255,0,0);
-                tracks.strokeWeight(1.75);
-                tracks.line(pos.x-r,pos.y-r,pos.x+r,pos.y+r);
-                tracks.line(pos.x-r,pos.y+r,pos.x+r,pos.y-r);
-                tracks.pop();
-            };
-
-            const drawRecordedLandfalls = (startTick,endTick)=>{
-                if(!this.landfallPoints || this.landfallPoints.length<1)
-                    return false;
-
-                let drew = false;
-                for(let lf of this.landfallPoints){
-                    let t = lf.tick===undefined ? this.birthTime : lf.tick;
-                    if(startTick!==undefined && t<startTick) continue;
-                    if(endTick!==undefined && t>endTick) continue;
-
-                    let pos = Coordinate.convertToXY(
-                        this.basin.mapType,
-                        lf.longitude,
-                        lf.latitude
-                    );
-                    drawLandfallMarker(pos);
-                    drew = true;
-                }
-
-                return drew;
-            };
-
-            const drawLandfallsForSegment = (a,b)=>{
-                for(let p of findLandfallPoints(a,b))
-                    drawLandfallMarker(p);
-            };
-
             // Season Summary uses the storm's complete advisory record from
             // birth onward. This deliberately bypasses the live-track gates so
             // precursor tropical-wave points are never dropped. After the
@@ -470,15 +374,6 @@ class Storm{
                     for(let n=0;n<=lastPoint;n++)
                         drawTrackPoint(this.record[n]);
 
-                    if(!drawRecordedLandfalls()){
-                        // Backward compatibility for older saves made before
-                        // exact hourly landfall locations were persisted.
-                        for(let n=0;n<lastPoint;n++)
-                            drawLandfallsForSegment(
-                                this.record[n].pos,
-                                this.record[n+1].pos
-                            );
-                    }
                 }
 
                 return;
@@ -512,8 +407,6 @@ class Storm{
                             drawTrackLine(adv.pos,nextAdv.pos);
                             drawTrackPoint(adv);
                             drawTrackPoint(nextAdv);
-                            if(!drawRecordedLandfalls(t,nextT))
-                                drawLandfallsForSegment(adv.pos,nextAdv.pos);
                         }
                     }
                 }else if(this.aliveAt(viewTick) || simSettings.trackMode===2 || selectedStorm===this){
@@ -543,15 +436,6 @@ class Storm{
                         for(let n=0;n<=pointEnd;n++)
                             drawTrackPoint(this.record[n]);
 
-                        let visibleEndTick =
-                            (pointEnd+ceil(this.birthTime/ADVISORY_TICKS))*ADVISORY_TICKS;
-                        if(!drawRecordedLandfalls(undefined,visibleEndTick)){
-                            for(let n=0;n<pointEnd;n++)
-                                drawLandfallsForSegment(
-                                    this.record[n].pos,
-                                    this.record[n+1].pos
-                                );
-                        }
                     }
 
                     if(selectedStorm===this){
@@ -865,7 +749,6 @@ class Storm{
             'landfalls'
         ]) obj[p] = this[p];
         obj.record = StormData.saveArr(this.record);
-        obj.landfallPoints = this.landfallPoints;
         obj.designations = {};
         obj.designations.primary = [];
         obj.designations.secondary = [];
@@ -902,8 +785,6 @@ class Storm{
                 if(!this.deaths) this.deaths = 0;
                 if(!this.damage) this.damage = 0;
                 if(!this.landfalls) this.landfalls = 0;
-                this.landfallPoints = Array.isArray(obj.landfallPoints) ?
-                    obj.landfallPoints : [];
                 if(obj.depressionNum!==undefined) depNum = obj.depressionNum;
                 if(obj.nameNum!==undefined) nameNum = obj.nameNum;
                 if(obj.designations!==undefined) designations = obj.designations;
@@ -1350,10 +1231,6 @@ class ActiveSystem extends StormData{
             STORM_ALGORITHM.defaults.steering(this,this.steering,u);
         // this.steering.add(this.interaction.fuji);
         let prevland = u.land();
-        let prevPos = {
-            x: this.pos.x,
-            y: this.pos.y
-        };
         this.pos.add(this.steering);
 
         if(STORM_ALGORITHM[basin.actMode].core)
@@ -1476,47 +1353,6 @@ class ActiveSystem extends StormData{
                 this.fetchStorm().damage = round(this.fetchStorm().damage*100)/100;
                 this.fetchStorm().deaths += ded;
                 this.fetchStorm().landfalls += lf;
-
-                if(lf){
-                    // Refine the one-hour water -> land crossing to the coast
-                    // and persist the geographic location for track rendering.
-                    let lo = 0;
-                    let hi = 1;
-
-                    for(let i=0;i<9;i++){
-                        let mid = (lo+hi)/2;
-                        let midPos = {
-                            x: lerp(prevPos.x,x,mid),
-                            y: lerp(prevPos.y,y,mid)
-                        };
-                        let midCoord = Coordinate.convertFromXY(
-                            basin.mapType,
-                            midPos.x,
-                            midPos.y
-                        );
-
-                        if(land.get(midCoord))
-                            hi = mid;
-                        else
-                            lo = mid;
-                    }
-
-                    let landfallPos = {
-                        x: lerp(prevPos.x,x,hi),
-                        y: lerp(prevPos.y,y,hi)
-                    };
-                    let landfallCoord = Coordinate.convertFromXY(
-                        basin.mapType,
-                        landfallPos.x,
-                        landfallPos.y
-                    );
-
-                    this.fetchStorm().landfallPoints.push({
-                        longitude: landfallCoord.longitude,
-                        latitude: landfallCoord.latitude,
-                        tick: basin.tick
-                    });
-                }
             }
             let seas = basin.fetchSeason(-1,true,true);
             for(let subId of basin.forSubBasinChain(sub)){

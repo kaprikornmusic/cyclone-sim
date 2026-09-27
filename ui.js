@@ -1909,28 +1909,11 @@ UI.init = function(){
                             seg.startX = map(seg.startTick,beginPlotTick,endPlotTick,0,plotWidth);
                             seg.endX = map(seg.endTick,beginPlotTick,endPlotTick,0,plotWidth);
                         }
-                        let rowFits;
-                        part.row = -1;
-                        textSize(12);
-                        let thisLabelZone = textWidth(part.label) + 6;
-                        do{
-                            part.row++;
-                            rowFits = true;
-                            for(let q=0;q<parts.length;q++){
-                                let p = parts[q];
-                                let otherLabelZone = textWidth(p.label) + 6;
-                                let thisS = part.segments[0].startX;
-                                let thisE = part.segments[part.segments.length-1].endX + thisLabelZone;
-                                let otherS = p.segments[0].startX;
-                                let otherE = p.segments[p.segments.length-1].endX + otherLabelZone;
-                                if(p.row===part.row){
-                                    if(thisS>=otherS && thisS<=otherE ||
-                                        thisE>=otherS && thisE<=otherE ||
-                                        otherS>=thisS && otherS<=thisE ||
-                                        otherE>=thisS && otherE<=thisE) rowFits = false;
-                                }
-                            }
-                        }while(!rowFits);
+                        // Wikipedia-style layout: storms are already sorted by
+                        // genesis/entry time, so place each successive storm on the
+                        // next row down. Only after reaching the bottom of the
+                        // timeline do we wrap back to the first row.
+                        part.row = parts.length % maxRowFit;
                         parts.push(part);
                     }
                 };

@@ -285,27 +285,39 @@ SPAWN_RULES[SIM_MODE_NORMAL].doSpawn = function(b){
     const month = b.tickMoment().month(); // 0 = January
     const may = month===4;
     const june = month===5;
+    const july = month===6;
+    const august = month===7;
+    const september = month===8;
     const coreSeason = month>=6 && month<=8;
     const lateSeason = month===9 || month===10;
+
+    // Redistribute direct tropical-wave genesis later in the season without
+    // materially changing the June-September total.
+    const waveSeasonShift =
+        june ? 0.70 :
+        july ? 0.80 :
+        august ? 1.18 :
+        september ? 1.32 :
+        1;
 
     // Easterly waves remain the dominant peak-season source. A small June
     // floor prevents the first named storm from being pushed almost entirely
     // into July/August by the squared seasonal curve.
     const waveActivity = june ? max(peak,0.72) : peak;
-    if(random()<0.0075*waveActivity)
+    if(random()<0.0075*waveActivity*waveSeasonShift)
         b.spawnArchetype('atl_tw');
 
     // Western Caribbean / Gulf systems are deliberately emphasized in June,
     // matching the early-season tendency for genesis closer to land.
     const westActivity = june ? 1.00 : may ? 0.55 : coreSeason ? max(0.45,peak) : lateSeason ? 0.65 : 0.10;
-    if(random()<(june ? 0.0048 : 0.0025)*westActivity)
+    if(random()<(june ? 0.0048 : 0.0025)*westActivity*waveSeasonShift)
         b.spawnArchetype('atl_west');
 
     // A separate warm-core northern tropical-low route makes genesis around
     // 20-30N possible without requiring every system to tropicalize from an
     // extratropical cyclone first.
     const northActivity = june ? 1.65 : may ? 0.70 : coreSeason ? 1.05 : lateSeason ? 1.25 : 0.14;
-    if(random()<0.0030*northActivity)
+    if(random()<0.0030*northActivity*waveSeasonShift)
         b.spawnArchetype('atl_northlow');
 
     // Frontal and subtropical transition is strongest in the early/late

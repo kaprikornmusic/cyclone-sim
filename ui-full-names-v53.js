@@ -1878,6 +1878,20 @@ UI.init = function(){
                         part.storm = t;
                         part.segments = [];
                         part.label = t.getNameByTick(-1);
+                        if(UI.viewBasin.mainSubBasin===EARTH_SB_IDS.atl){
+                            // Use Atlantic-issued designations, never a later name
+                            // assigned after crossing into another basin.
+                            const localDesignations = [
+                                ...t.designations.primary, ...t.designations.secondary
+                            ].filter(d=>d instanceof Designation &&
+                                (d.subBasin===EARTH_SB_IDS.atl ||
+                                 d.subBasin===EARTH_SB_IDS.atlland));
+                            const localNames = localDesignations.filter(d=>d.isName());
+                            const labels = (localNames.length ? localNames : localDesignations)
+                                .slice().sort((a,b)=>a.effectiveTicks[0]-b.effectiveTicks[0])
+                                .map(d=>d.isName() ? d.value : d.value.replace(/H$/, 'L'));
+                            part.label = [...new Set(labels)].join('-') || 'Unnamed';
+                        }
                         let aSegment;
                         for(let q=0;q<t.record.length;q++){
                             let rt = ceil(t.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS + q*ADVISORY_TICKS;
@@ -2078,7 +2092,7 @@ UI.init = function(){
                     let y = timelineRowY(i);
                     let mx = getMouseX()-this.getX();
                     let my = getMouseY()-this.getY();
-                    textSize(10);
+                    textSize(9);
                     if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+10) stroke(255);
                     else noStroke();
                     for(let j=0;j<p.segments.length;j++){
@@ -2099,7 +2113,7 @@ UI.init = function(){
                 let y = timelineRowY(i);
                 let mx = getMouseX()-this.getX();
                 let my = getMouseY()-this.getY();
-                textSize(10);
+                textSize(9);
                 if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+10){
                     newTarget = p.storm;
                     break;

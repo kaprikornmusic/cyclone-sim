@@ -309,7 +309,7 @@ class Storm{
             const drawTrackPoint = (adv)=>{
                 let pos = adv.pos;
                 let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
-                const r = 3;
+                const r = 2.5;
 
                 tracks.push();
                 tracks.noStroke();

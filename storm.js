@@ -388,21 +388,10 @@ class Storm{
                 );
             };
 
-            const detailedTrackMode =
-                this.basin.actMode===SIM_MODE_NORMAL ||
-                this.basin.actMode===SIM_MODE_WILD ||
-                this.basin.actMode===SIM_MODE_EXPERIMENTAL;
-
             const activeTropicalWave =
                 this.current &&
                 this.current.type===TROPWAVE &&
-                (
-                    this.basin.actMode===SIM_MODE_NORMAL ?
-                        this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD :
-                    detailedTrackMode ?
-                        true :
-                        this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD
-                );
+                this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD;
 
             if(this.inBasinTC || activeTropicalWave || simSettings.trackMode===1){
                 if(newestSegment){
@@ -1254,10 +1243,14 @@ class ActiveSystem extends StormData{
         else
             STORM_ALGORITHM.defaults.typeDetermination(this,u);
 
-        // Hard cutoff for Normal mode: dissipate immediately in the same tick
-        // that a tropical wave/low falls below 20 mph.
+        // Hard 20 mph tropical-wave cutoff for Normal, Wild, and Experimental:
+        // dissipate immediately in the same tick that a wave/low falls below it.
         if(
-            basin.actMode===SIM_MODE_NORMAL &&
+            (
+                basin.actMode===SIM_MODE_NORMAL ||
+                basin.actMode===SIM_MODE_WILD ||
+                basin.actMode===SIM_MODE_EXPERIMENTAL
+            ) &&
             this.type===TROPWAVE &&
             this.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD
         ){

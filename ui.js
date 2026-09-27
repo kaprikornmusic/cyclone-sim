@@ -1854,25 +1854,24 @@ UI.init = function(){
             if(target!==undefined && !(target instanceof Storm)){
                 let gen = s=>{
                     let TCs = [];
-                    let beginSeasonTick;
-                    let endSeasonTick;
+
+                    // Season timelines always span the full calendar year,
+                    // January 1 00Z through January 1 00Z of the next year.
+                    // This keeps every season directly comparable and leaves
+                    // visible empty space before/after the active storm period.
+                    let sMoment = moment.utc([target,0,1]).startOf('day');
+                    let eMoment = moment.utc([target+1,0,1]).startOf('day');
+                    let beginPlotTick = UI.viewBasin.tickFromMoment(sMoment);
+                    let endPlotTick = UI.viewBasin.tickFromMoment(eMoment);
+                    months = 12;
+                    sMonth = 0;
+
                     for(let sys of s.forSystems()){
                         if(sys.inBasinTC && (UI.viewBasin.getSeason(sys.enterTime)===target || UI.viewBasin.getSeason(sys.enterTime)<target && (sys.exitTime===undefined || UI.viewBasin.getSeason(sys.exitTime-1)>=target))){
                             TCs.push(sys);
-                            let dissTime = sys.exitTime || UI.viewBasin.tick;
-                            if(beginSeasonTick===undefined || sys.enterTime<beginSeasonTick) beginSeasonTick = sys.enterTime;
-                            if(endSeasonTick===undefined || dissTime>endSeasonTick) endSeasonTick = dissTime;
                         }
                     }
                     TCs.sort((a,b)=>a.enterTime-b.enterTime);
-                    let sMoment = UI.viewBasin.tickMoment(beginSeasonTick);
-                    sMonth = sMoment.month();
-                    sMoment.startOf('month');
-                    let beginPlotTick = UI.viewBasin.tickFromMoment(sMoment);
-                    let eMoment = UI.viewBasin.tickMoment(endSeasonTick);
-                    eMoment.endOf('month');
-                    let endPlotTick = UI.viewBasin.tickFromMoment(eMoment);
-                    months = eMoment.diff(sMoment,'months') + 1;
                     for(let t of TCs){
                         let part = {};
                         part.storm = t;
@@ -1898,8 +1897,11 @@ UI.init = function(){
                         }
                         for(let q=0;q<part.segments.length;q++){
                             let seg = part.segments[q];
-                            seg.startX = map(seg.startTick,beginPlotTick,endPlotTick,0,plotWidth);
-                            seg.endX = map(seg.endTick,beginPlotTick,endPlotTick,0,plotWidth);
+                            // Clip cross-year systems to the visible calendar year.
+                            let visibleStartTick = max(seg.startTick,beginPlotTick);
+                            let visibleEndTick = min(seg.endTick,endPlotTick);
+                            seg.startX = map(visibleStartTick,beginPlotTick,endPlotTick,0,plotWidth,true);
+                            seg.endX = map(visibleEndTick,beginPlotTick,endPlotTick,0,plotWidth,true);
                         }
                         // Storm order is already chronological. Vertical placement
                         // is derived from the final sorted index at render time.
@@ -2026,13 +2028,36 @@ UI.init = function(){
                 line(lBound,bBound,lBound,tBound);
                 textSize(13);
                 let M = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-                for(let i=0;i<months;i++){
+                let yearStartTick = UI.viewBasin.tickFromMoment(
+                    moment.utc([target,0,1]).startOf('day')
+                );
+                let yearEndTick = UI.viewBasin.tickFromMoment(
+                    moment.utc([target+1,0,1]).startOf('day')
+                );
+                for(let i=0;i<12;i++){
+                    let monthStartTick = UI.viewBasin.tickFromMoment(
+                        moment.utc([target,i,1]).startOf('day')
+                    );
+                    let monthEndMoment =
+                        i===11 ?
+                            moment.utc([target+1,0,1]).startOf('day') :
+                            moment.utc([target,i+1,1]).startOf('day');
+                    let monthEndTick =
+                        UI.viewBasin.tickFromMoment(monthEndMoment);
+                    let x0 = map(
+                        monthEndTick,
+                        yearStartTick,yearEndTick,
+                        lBound,rBound,true
+                    );
+                    let x1 = map(
+                        (monthStartTick+monthEndTick)/2,
+                        yearStartTick,yearEndTick,
+                        lBound,rBound,true
+                    );
                     stroke(COLORS.UI.text);
-                    let x0 = map(i+1,0,months,lBound,rBound);
-                    let x1 = map(i+0.5,0,months,lBound,rBound);
                     line(x0,bBound,x0,tBound);
                     noStroke();
-                    text(M[(i+sMonth)%12],x1,bBound+BOX_HEIGHT*0.02);
+                    text(M[i],x1,bBound+BOX_HEIGHT*0.02);
                 }
                 noStroke();
                 for(let i=0;i<parts.length;i++){

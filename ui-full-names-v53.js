@@ -1944,8 +1944,8 @@ UI.init = function(){
         // Leave room for the title/navigation above and month labels below.
         const tBound = 60;
         const bBound = BOX_HEIGHT-18;
-        const TIMELINE_ROW_COUNT = 8;
-        const TIMELINE_BAR_HEIGHT = 10;
+        const TIMELINE_ROW_COUNT = 10;
+        const TIMELINE_BAR_HEIGHT = 8;
         const timelineRowGap =
             (bBound-tBound-TIMELINE_BAR_HEIGHT)/(TIMELINE_ROW_COUNT-1);
         const timelineRowY = index=>
@@ -2093,17 +2093,17 @@ UI.init = function(){
                     let mx = getMouseX()-this.getX();
                     let my = getMouseY()-this.getY();
                     textSize(9);
-                    if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+10) stroke(255);
+                    if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+TIMELINE_BAR_HEIGHT) stroke(255);
                     else noStroke();
                     for(let j=0;j<p.segments.length;j++){
                         let S = p.segments[j];
                         fill(UI.viewBasin.getScale(UI.viewBasin.mainSubBasin).getColor(S.maxCat,!S.fullyTrop));
-                        rect(lBound+S.startX,y,max(S.endX-S.startX,1),10);
+                        rect(lBound+S.startX,y,max(S.endX-S.startX,1),TIMELINE_BAR_HEIGHT);
                     }
                     let labelLeftBound = lBound + p.segments[p.segments.length-1].endX;
                     fill(COLORS.UI.text);
                     textAlign(LEFT,CENTER);
-                    text(p.label,labelLeftBound+3,y+5);
+                    text(p.label,labelLeftBound+3,y+TIMELINE_BAR_HEIGHT/2);
                 }
             }
         },function(){
@@ -2114,7 +2114,7 @@ UI.init = function(){
                 let mx = getMouseX()-this.getX();
                 let my = getMouseY()-this.getY();
                 textSize(9);
-                if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+10){
+                if(mx>=lBound+p.segments[0].startX && mx<lBound+p.segments[p.segments.length-1].endX+textWidth(p.label)+6 && my>=y && my<y+TIMELINE_BAR_HEIGHT){
                     newTarget = p.storm;
                     break;
                 }

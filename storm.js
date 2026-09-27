@@ -1343,51 +1343,77 @@ class ActiveSystem extends StormData{
             let storm = this.fetchStorm();
             let seas = basin.fetchSeason(-1,true,true);
 
-            // Approximate the cyclone's damaging wind footprint instead of
-            // applying all impacts only at the storm center. The footprint
-            // expands with maximum sustained wind, and subtropical systems
-            // are slightly broader than fully tropical systems.
+            // Dense wind-footprint sampling. The previous sparse
+            // 8-direction rings could miss narrow coastlines, making impacts
+            // appear landfall-only. Sample the whole circulation with
+            // 16 azimuths across 6 radial bands plus the center.
             let impactRadius = map(
                 constrain(this.windSpeed,20,150),
                 20,150,
-                5,30,
+                10,52,
                 true
             );
             if(impactType===SUBTROP)
-                impactRadius *= 1.25;
+                impactRadius *= 1.35;
 
-            // Keep the total exposure near the old center-point model when
-            // the whole wind field is over land, while allowing offshore
-            // cyclones to affect nearby coasts.
             let impactSamples = [{
                 x:x,
                 y:y,
                 windFactor:1,
-                weight:0.8
+                weight:0.22
             }];
-            let rings = [
-                {radius:0.35, windFactor:0.82, weight:0.045, offset:0},
-                {radius:0.70, windFactor:0.58, weight:0.025, offset:PI/8},
-                {radius:1.00, windFactor:0.40, weight:0.015, offset:0}
-            ];
-            for(let ring of rings){
-                for(let i=0;i<8;i++){
-                    let a = ring.offset+i*TAU/8;
+
+            const IMPACT_AZIMUTHS = 16;
+            const IMPACT_RADIAL_BANDS = 6;
+            const RING_EXPOSURE_WEIGHT = 0.78;
+
+            for(let ring=1;ring<=IMPACT_RADIAL_BANDS;ring++){
+                let inner = (ring-1)/IMPACT_RADIAL_BANDS;
+                let outer = ring/IMPACT_RADIAL_BANDS;
+                let radiusNorm = sqrt((sq(inner)+sq(outer))/2);
+                let annulusFraction = sq(outer)-sq(inner);
+                let sampleWeight =
+                    RING_EXPOSURE_WEIGHT*
+                    annulusFraction/
+                    IMPACT_AZIMUTHS;
+
+                // Smooth radial wind decay: broad enough for coastal
+                // wind impacts while keeping the strongest winds near center.
+                let windFactor =
+                    1-0.62*pow(radiusNorm,1.30);
+
+                // Stagger adjacent rings so their spokes do not line up,
+                // reducing gaps over irregular coastlines.
+                let offset = ring%2 ? TAU/(IMPACT_AZIMUTHS*2) : 0;
+
+                for(let i=0;i<IMPACT_AZIMUTHS;i++){
+                    let a = offset+i*TAU/IMPACT_AZIMUTHS;
                     impactSamples.push({
-                        x:x+cos(a)*impactRadius*ring.radius,
-                        y:y+sin(a)*impactRadius*ring.radius,
-                        windFactor:ring.windFactor,
-                        weight:ring.weight
+                        x:x+cos(a)*impactRadius*radiusNorm,
+                        y:y+sin(a)*impactRadius*radiusNorm,
+                        windFactor,
+                        weight:sampleWeight
                     });
                 }
             }
 
             // One vulnerability/noise draw per storm per tick, matching the
-            // old model's randomness without consuming extra RNG for every
-            // sample point.
+            // old model's randomness without adding independent noise at each
+            // footprint sample.
             let modifier = pow(1.5,randomGaussian());
             let damageNoise = pow(1.1,random(-1,1));
             let deathNoise = pow(1.1,random(-1,1));
+
+            let stormDamageImpact = 0;
+            let stormDeathImpact = 0;
+            let subBasinImpacts = {};
+
+            let addSubBasinImpact = (subId,dam,ded)=>{
+                if(!subBasinImpacts[subId])
+                    subBasinImpacts[subId] = {damage:0,deaths:0};
+                subBasinImpacts[subId].damage += dam;
+                subBasinImpacts[subId].deaths += ded;
+            };
 
             for(let sample of impactSamples){
                 if(
@@ -1418,25 +1444,37 @@ class ActiveSystem extends StormData{
                 let dedPot = (pow(1.045,localWind)-1)*modifier;
                 let dam =
                     pop*damPot*3.3*damageNoise*sample.weight;
-                let ded = round(
-                    pop*dedPot*0.0000017*deathNoise*sample.weight
-                );
-                ded = round(ded/10);
+
+                // Keep fractional fatalities while combining the complete
+                // footprint, then round once per tick. This prevents offshore
+                // wind impacts from disappearing because each small sample
+                // rounded to zero independently.
+                let ded =
+                    pop*dedPot*0.0000017*deathNoise*sample.weight/10;
 
                 if(!storm.inBasinTC || basin.subInBasin(sub)){
-                    storm.damage += dam;
-                    storm.damage = round(storm.damage*100)/100;
-                    storm.deaths += ded;
+                    stormDamageImpact += dam;
+                    stormDeathImpact += ded;
                 }
 
                 for(let subId of basin.forSubBasinChain(sub)){
-                    if(basin.subInBasin(subId)){
-                        let stats = seas.stats(subId);
-                        stats.damage += dam;
-                        stats.damage = round(stats.damage*100)/100;
-                        stats.deaths += ded;
-                    }
+                    if(basin.subInBasin(subId))
+                        addSubBasinImpact(subId,dam,ded);
                 }
+            }
+
+            if(stormDamageImpact || stormDeathImpact){
+                storm.damage += stormDamageImpact;
+                storm.damage = round(storm.damage*100)/100;
+                storm.deaths += round(stormDeathImpact);
+            }
+
+            for(let subId in subBasinImpacts){
+                let stats = seas.stats(+subId);
+                let impact = subBasinImpacts[subId];
+                stats.damage += impact.damage;
+                stats.damage = round(stats.damage*100)/100;
+                stats.deaths += round(impact.deaths);
             }
 
             // Landfall count remains center-based: peripheral winds reaching

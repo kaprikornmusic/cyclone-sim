@@ -1839,7 +1839,8 @@ UI.init = function(){
 
     timeline = (function(){
         const BOX_WIDTH = WIDTH;
-        const BOX_HEIGHT = (HEIGHT-topBar.height-bottomBar.height)*0.5;
+        // Keep the panel to one third of the canvas height.
+        const BOX_HEIGHT = HEIGHT/3;
         let months = 12;
         let sMonth = 0;
         let parts = [];
@@ -1926,8 +1927,9 @@ UI.init = function(){
 
         const lBound = BOX_WIDTH*0.05;
         const rBound = BOX_WIDTH*0.95;
-        const tBound = BOX_HEIGHT*0.2;
-        const bBound = BOX_HEIGHT*0.93;
+        // Leave room for the title/navigation above and month labels below.
+        const tBound = 60;
+        const bBound = BOX_HEIGHT-18;
         const TIMELINE_ROW_COUNT = 8;
         const TIMELINE_BAR_HEIGHT = 10;
         const timelineRowGap =
@@ -2024,7 +2026,6 @@ UI.init = function(){
             }else{
                 text('Timeline of ' + seasonName(target) + '  •  Full Year · Jan–Dec', BOX_WIDTH * 0.5, BOX_HEIGHT * 0.03);
                 stroke(COLORS.UI.text);
-                line(lBound,bBound,rBound,bBound);
                 line(lBound,bBound,lBound,tBound);
                 textSize(12);
                 let M = [
@@ -2038,8 +2039,7 @@ UI.init = function(){
                     moment.utc([target+1,0,1]).startOf('day')
                 );
 
-                // Draw an explicit 12-column calendar grid. Empty months keep
-                // their own visible cells instead of disappearing visually.
+                // Keep all twelve months visible using vertical dividers only.
                 for(let i=0;i<12;i++){
                     let monthStartTick = UI.viewBasin.tickFromMoment(
                         moment.utc([target,i,1]).startOf('day')
@@ -2063,9 +2063,8 @@ UI.init = function(){
                     );
                     let xc = (x0+x1)/2;
 
-                    noFill();
                     stroke(COLORS.UI.text);
-                    rect(x0,tBound,max(x1-x0,1),bBound-tBound);
+                    line(x1,tBound,x1,bBound);
 
                     noStroke();
                     fill(COLORS.UI.text);
@@ -2073,13 +2072,6 @@ UI.init = function(){
                     text(M[i],xc,bBound+BOX_HEIGHT*0.02);
                 }
 
-                // Horizontal row guides complete the year table across all
-                // twelve months, including rows with no storm bar in a month.
-                stroke(COLORS.UI.text);
-                for(let i=0;i<TIMELINE_ROW_COUNT;i++){
-                    let y = timelineRowY(i)+TIMELINE_BAR_HEIGHT;
-                    line(lBound,y,rBound,y);
-                }
                 noStroke();
                 for(let i=0;i<parts.length;i++){
                     let p = parts[i];

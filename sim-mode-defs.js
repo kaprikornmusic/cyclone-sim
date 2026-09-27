@@ -1395,30 +1395,47 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         }
     }
 
-    if(sys.type===TROP && sys.windSpeed>=80){
-        // Progressive high-end brake. Strong hurricanes can still reach major
-        // or Category 5 intensity, but sustained extreme intensification now
-        // requires a distinctly favorable environment.
+    if(sys.type===TROP && sys.windSpeed>=88){
+        // Stronger threshold-focused brake. Keep Cat 1-2 hurricanes viable,
+        // but make the jump into major-hurricane intensity less automatic.
         let eliteEnvironment =
-            map(SST,26.0,30.5,0,1,true) *
-            map(moisture,0.46,0.78,0,1,true) *
-            map(shear,20,3,0,1,true);
+            map(SST,26.2,30.5,0,1,true) *
+            map(moisture,0.48,0.80,0,1,true) *
+            map(shear,18,3,0,1,true);
 
-        let baseBrake =
-            map(sys.windSpeed,80,125,0.015,0.115,true);
+        // Very small damping below the major threshold, then a much steeper
+        // increase once 96 kt is reached.
+        let preMajorBrake =
+            sys.windSpeed<96 ?
+                map(sys.windSpeed,88,96,0.010,0.045,true) :
+                0;
         let majorBrake =
             sys.windSpeed>=96 ?
-                map(sys.windSpeed,96,145,0.020,0.105,true) :
+                map(sys.windSpeed,96,145,0.105,0.315,true) :
+                0;
+        let extremeBrake =
+            sys.windSpeed>=115 ?
+                map(sys.windSpeed,115,155,0.025,0.160,true) :
                 0;
 
-        // Excellent conditions can offset much of the brake, but never all of
-        // it. This preserves rare Cat 4/5 storms without making them routine.
+        // Perfect environments can offset much of the damping, but still need
+        // sustained favorable conditions to support Cat 4-5 intensity.
         let brake =
-            (baseBrake+majorBrake)*
-            map(eliteEnvironment,0,1,1.00,0.38,true);
+            (preMajorBrake+majorBrake+extremeBrake)*
+            map(eliteEnvironment,0,1,1.12,0.42,true);
 
         sys.windSpeed = max(0,sys.windSpeed-brake);
-        sys.pressure += 0.08*brake;
+
+        // Feed some of the brake back into pressure/organization so the
+        // default core does not immediately restore the lost wind next tick.
+        sys.pressure += 0.40*brake;
+        if(sys.windSpeed>=96){
+            sys.organization = constrain(
+                sys.organization-
+                0.0015*(1-eliteEnvironment),
+                0,1
+            );
+        }
     }
 
     // Don/Nadine/Leslie-style systems can remain tropical or subtropical for

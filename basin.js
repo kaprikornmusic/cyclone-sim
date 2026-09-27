@@ -137,9 +137,14 @@ class Basin{
         }
         this.env.wobble();    // random change in environment for future forecast realism
 
-        // Remove weak Normal-mode tropical waves before interaction, steering,
-        // environmental sampling, or intensity calculations are performed.
-        if(this.actMode===SIM_MODE_NORMAL){
+        // Remove weak tropical waves before interaction, steering,
+        // environmental sampling, or intensity calculations in modes that
+        // use the 20 mph tropical-wave cutoff.
+        if(
+            this.actMode===SIM_MODE_NORMAL ||
+            this.actMode===SIM_MODE_WILD ||
+            this.actMode===SIM_MODE_EXPERIMENTAL
+        ){
             for(let i=this.activeSystems.length-1;i>=0;i--){
                 let sys = this.activeSystems[i];
                 if(sys.type===TROPWAVE && sys.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD){
@@ -286,10 +291,14 @@ class Basin{
     }
 
     spawn(data){
-        // In Normal mode, tropical waves/lows weaker than roughly 20 mph are
-        // discarded immediately instead of entering the active simulation.
+        // Normal, Wild, and Experimental all use the same 20 mph cutoff for
+        // tropical waves/lows at spawn time.
         if(
-            this.actMode===SIM_MODE_NORMAL &&
+            (
+                this.actMode===SIM_MODE_NORMAL ||
+                this.actMode===SIM_MODE_WILD ||
+                this.actMode===SIM_MODE_EXPERIMENTAL
+            ) &&
             data &&
             data.type===TROPWAVE &&
             data.windSpeed!==undefined &&

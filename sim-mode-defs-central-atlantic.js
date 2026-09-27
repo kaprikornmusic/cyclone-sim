@@ -1367,6 +1367,60 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
         }
     }
 
+    // Rebalance the Atlantic intensity distribution without changing
+    // genesis frequency. The 10-season sample was producing too few
+    // hurricanes relative to named storms, while a large share of hurricanes
+    // continued into major-hurricane intensity.
+    if(sys.type===TROP && sys.windSpeed>=40 && sys.windSpeed<64){
+        let hurricaneTransitionFavorability =
+            map(SST,24.8,29.5,0,1,true) *
+            map(moisture,0.40,0.72,0,1,true) *
+            map(shear,24,5,0,1,true);
+
+        if(hurricaneTransitionFavorability>0){
+            // Small hourly assist: enough to help mature tropical storms cross
+            // the 64 kt threshold, but not enough to create rapid intensification.
+            let thresholdBoost =
+                map(sys.windSpeed,40,64,0.70,1.00,true);
+            let hBoost =
+                hurricaneTransitionFavorability*thresholdBoost;
+
+            sys.organization = constrain(
+                sys.organization + 0.0030*hBoost,
+                0,1
+            );
+            sys.pressure -= 0.10*hBoost;
+            sys.windSpeed += 0.10*hBoost;
+            sys.depth = lerp(sys.depth,0.30,0.004*hBoost);
+        }
+    }
+
+    if(sys.type===TROP && sys.windSpeed>=80){
+        // Progressive high-end brake. Strong hurricanes can still reach major
+        // or Category 5 intensity, but sustained extreme intensification now
+        // requires a distinctly favorable environment.
+        let eliteEnvironment =
+            map(SST,26.0,30.5,0,1,true) *
+            map(moisture,0.46,0.78,0,1,true) *
+            map(shear,20,3,0,1,true);
+
+        let baseBrake =
+            map(sys.windSpeed,80,125,0.015,0.115,true);
+        let majorBrake =
+            sys.windSpeed>=96 ?
+                map(sys.windSpeed,96,145,0.020,0.105,true) :
+                0;
+
+        // Excellent conditions can offset much of the brake, but never all of
+        // it. This preserves rare Cat 4/5 storms without making them routine.
+        let brake =
+            (baseBrake+majorBrake)*
+            map(eliteEnvironment,0,1,1.00,0.38,true);
+
+        sys.windSpeed = max(0,sys.windSpeed-brake);
+        sys.pressure += 0.08*brake;
+    }
+
     // Don/Nadine/Leslie-style systems can remain tropical or subtropical for
     // days over marginal waters if their core stays organized and shear is
     // not excessive. This is maintenance, not a strong intensification boost.

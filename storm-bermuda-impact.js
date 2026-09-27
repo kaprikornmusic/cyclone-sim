@@ -305,7 +305,16 @@ class Storm{
 
             const drawTrackPoint = (adv)=>{
                 let pos = adv.pos;
-                let col = this.basin.getScale(land.getSubBasin(adv.coord())).getColor(adv);
+                let pointScale = this.basin.getScale(land.getSubBasin(adv.coord()));
+                // Wave and remnant triangles encode wind intensity, not status.
+                // Pressure-based scales cannot classify their wind strength.
+                let triangleScale =
+                    pointScale.measure===SCALE_MEASURE_MILLIBARS ||
+                    pointScale.measure===SCALE_MEASURE_INHG ?
+                        Scale.saffirSimpson : pointScale;
+                let col = adv.type===TROPWAVE ?
+                    triangleScale.getColor(triangleScale.get(adv)) :
+                    pointScale.getColor(adv);
                 const r = 2.0;
 
                 tracks.push();

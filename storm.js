@@ -1348,7 +1348,8 @@ class ActiveSystem extends StormData{
             damPot *= m;
             dedPot *= m;
             let dam = pop*damPot*3.3*pow(1.1,random(-1,1));
-            let ded = round(pop*dedPot*0.00000017*pow(1.1,random(-1,1)));
+            let ded = round(pop*dedPot*0.0000017*pow(1.1,random(-1,1)));
+            ded = round(ded/10);
             let lf = 0;
             if(!prevland && lnd) lf = 1;
             let sub = land.getSubBasin(Coordinate.convertFromXY(basin.mapType,x,y));

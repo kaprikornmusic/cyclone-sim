@@ -30,6 +30,7 @@ class Storm{
         this.deaths = 0;
         this.damage = 0;
         this.landfalls = 0;
+        this.landfallPoints = [];
         if(!this.current && data instanceof LoadData) this.load(data);
     }
 
@@ -404,14 +405,36 @@ class Storm{
             };
 
             const drawLandfallMarker = (pos)=>{
-                const r = 3;
+                const r = 3.5;
 
                 tracks.push();
                 tracks.stroke(255,0,0);
-                tracks.strokeWeight(1.5);
+                tracks.strokeWeight(1.75);
                 tracks.line(pos.x-r,pos.y-r,pos.x+r,pos.y+r);
                 tracks.line(pos.x-r,pos.y+r,pos.x+r,pos.y-r);
                 tracks.pop();
+            };
+
+            const drawRecordedLandfalls = (startTick,endTick)=>{
+                if(!this.landfallPoints || this.landfallPoints.length<1)
+                    return false;
+
+                let drew = false;
+                for(let lf of this.landfallPoints){
+                    let t = lf.tick===undefined ? this.birthTime : lf.tick;
+                    if(startTick!==undefined && t<startTick) continue;
+                    if(endTick!==undefined && t>endTick) continue;
+
+                    let pos = Coordinate.convertToXY(
+                        this.basin.mapType,
+                        lf.longitude,
+                        lf.latitude
+                    );
+                    drawLandfallMarker(pos);
+                    drew = true;
+                }
+
+                return drew;
             };
 
             const drawLandfallsForSegment = (a,b)=>{
@@ -447,11 +470,15 @@ class Storm{
                     for(let n=0;n<=lastPoint;n++)
                         drawTrackPoint(this.record[n]);
 
-                    for(let n=0;n<lastPoint;n++)
-                        drawLandfallsForSegment(
-                            this.record[n].pos,
-                            this.record[n+1].pos
-                        );
+                    if(!drawRecordedLandfalls()){
+                        // Backward compatibility for older saves made before
+                        // exact hourly landfall locations were persisted.
+                        for(let n=0;n<lastPoint;n++)
+                            drawLandfallsForSegment(
+                                this.record[n].pos,
+                                this.record[n+1].pos
+                            );
+                    }
                 }
 
                 return;
@@ -485,7 +512,8 @@ class Storm{
                             drawTrackLine(adv.pos,nextAdv.pos);
                             drawTrackPoint(adv);
                             drawTrackPoint(nextAdv);
-                            drawLandfallsForSegment(adv.pos,nextAdv.pos);
+                            if(!drawRecordedLandfalls(t,nextT))
+                                drawLandfallsForSegment(adv.pos,nextAdv.pos);
                         }
                     }
                 }else if(this.aliveAt(viewTick) || simSettings.trackMode===2 || selectedStorm===this){
@@ -515,11 +543,15 @@ class Storm{
                         for(let n=0;n<=pointEnd;n++)
                             drawTrackPoint(this.record[n]);
 
-                        for(let n=0;n<pointEnd;n++)
-                            drawLandfallsForSegment(
-                                this.record[n].pos,
-                                this.record[n+1].pos
-                            );
+                        let visibleEndTick =
+                            (pointEnd+ceil(this.birthTime/ADVISORY_TICKS))*ADVISORY_TICKS;
+                        if(!drawRecordedLandfalls(undefined,visibleEndTick)){
+                            for(let n=0;n<pointEnd;n++)
+                                drawLandfallsForSegment(
+                                    this.record[n].pos,
+                                    this.record[n+1].pos
+                                );
+                        }
                     }
 
                     if(selectedStorm===this){
@@ -833,6 +865,7 @@ class Storm{
             'landfalls'
         ]) obj[p] = this[p];
         obj.record = StormData.saveArr(this.record);
+        obj.landfallPoints = this.landfallPoints;
         obj.designations = {};
         obj.designations.primary = [];
         obj.designations.secondary = [];
@@ -869,6 +902,8 @@ class Storm{
                 if(!this.deaths) this.deaths = 0;
                 if(!this.damage) this.damage = 0;
                 if(!this.landfalls) this.landfalls = 0;
+                this.landfallPoints = Array.isArray(obj.landfallPoints) ?
+                    obj.landfallPoints : [];
                 if(obj.depressionNum!==undefined) depNum = obj.depressionNum;
                 if(obj.nameNum!==undefined) nameNum = obj.nameNum;
                 if(obj.designations!==undefined) designations = obj.designations;
@@ -1315,6 +1350,10 @@ class ActiveSystem extends StormData{
             STORM_ALGORITHM.defaults.steering(this,this.steering,u);
         // this.steering.add(this.interaction.fuji);
         let prevland = u.land();
+        let prevPos = {
+            x: this.pos.x,
+            y: this.pos.y
+        };
         this.pos.add(this.steering);
 
         if(STORM_ALGORITHM[basin.actMode].core)
@@ -1437,6 +1476,47 @@ class ActiveSystem extends StormData{
                 this.fetchStorm().damage = round(this.fetchStorm().damage*100)/100;
                 this.fetchStorm().deaths += ded;
                 this.fetchStorm().landfalls += lf;
+
+                if(lf){
+                    // Refine the one-hour water -> land crossing to the coast
+                    // and persist the geographic location for track rendering.
+                    let lo = 0;
+                    let hi = 1;
+
+                    for(let i=0;i<9;i++){
+                        let mid = (lo+hi)/2;
+                        let midPos = {
+                            x: lerp(prevPos.x,x,mid),
+                            y: lerp(prevPos.y,y,mid)
+                        };
+                        let midCoord = Coordinate.convertFromXY(
+                            basin.mapType,
+                            midPos.x,
+                            midPos.y
+                        );
+
+                        if(land.get(midCoord))
+                            hi = mid;
+                        else
+                            lo = mid;
+                    }
+
+                    let landfallPos = {
+                        x: lerp(prevPos.x,x,hi),
+                        y: lerp(prevPos.y,y,hi)
+                    };
+                    let landfallCoord = Coordinate.convertFromXY(
+                        basin.mapType,
+                        landfallPos.x,
+                        landfallPos.y
+                    );
+
+                    this.fetchStorm().landfallPoints.push({
+                        longitude: landfallCoord.longitude,
+                        latitude: landfallCoord.latitude,
+                        tick: basin.tick
+                    });
+                }
             }
             let seas = basin.fetchSeason(-1,true,true);
             for(let subId of basin.forSubBasinChain(sub)){

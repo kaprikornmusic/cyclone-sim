@@ -6,7 +6,6 @@ function refreshTracks(force){
     else if(simSettings.trackMode===2){
         let target = UI.viewBasin.getSeason(viewTick);
         let valid = sys=>(
-            sys.reachedTropicalStorm() &&
             sys.inBasinTC &&
             (
                 UI.viewBasin.getSeason(sys.enterTime)===target ||

@@ -1337,7 +1337,8 @@ class ActiveSystem extends StormData{
 
         let rType = this.fetchStorm().getStormDataByTick(basin.tick);
         rType = rType && rType.type;
-        let impactType = rType!==null ? rType : this.type;
+        let impactType =
+            rType!==null && rType!==undefined ? rType : this.type;
         if(tropOrSub(impactType)){
             let storm = this.fetchStorm();
             let seas = basin.fetchSeason(-1,true,true);

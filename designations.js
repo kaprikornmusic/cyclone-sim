@@ -102,6 +102,10 @@ class Designation{
                 'hideTicks'
             ]) if(o[p]) this[p] = o[p];
             if(o.effectiveTick) this.effectiveTicks.push(o.effectiveTick);
+            // Normalize legacy Atlantic depression suffixes in existing saves.
+            if(this.num!==undefined &&
+                (this.subBasin===EARTH_SB_IDS.atl || this.subBasin===EARTH_SB_IDS.atlland))
+                this.value = this.value.replace(/H$/, 'L');
         }
     }
 }
@@ -282,6 +286,8 @@ class DesignationSystem{
         let suf = this.numbering.suffix;
         if(altPre!==undefined) pre = altPre;
         if(altSuf!==undefined) suf = altSuf;
+        if(this.subBasin && (this.subBasin.id===EARTH_SB_IDS.atl ||
+            this.subBasin.id===EARTH_SB_IDS.atlland)) suf = 'L';
         let num = [pre,index,suf];
         return new Designation(num,tick,this.subBasin ? this.subBasin.id : 0);
     }

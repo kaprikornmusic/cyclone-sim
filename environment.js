@@ -502,6 +502,22 @@ class Land{
         this.basin = basin instanceof Basin && basin;
         let mapTypeDef = MAP_TYPES[this.basin.mapType];
         this.earth = mapTypeDef.form === 'earth';
+        this.explicitLandPatches = [];
+        if(
+            this.earth &&
+            this.basin.mainSubBasin===EARTH_SB_IDS.atl
+        ){
+            this.explicitLandPatches.push({
+                id: 'bermuda',
+                longitude: -64.75,
+                latitude: 32.30,
+                lonRadius: 0.32,
+                latRadius: 0.18,
+                elevationByte: 18,
+                landValue: 0.62,
+                subBasin: EARTH_SB_IDS.atlland
+            });
+        }
         const {fullW: W, fullH: H} = fullDimensions();
         this.map = createImage(W, H);
         if(this.earth){
@@ -526,31 +542,16 @@ class Land{
         if(long instanceof Coordinate)
             ({longitude: long, latitude: lat} = long);
 
-        // Bermuda is intentionally slightly enlarged relative to its real
-        // footprint so it remains visible and interactable at 960x540.
-        if(
-            this.earth &&
-            this.basin.mainSubBasin===EARTH_SB_IDS.atl
-        ){
-            const bermuda = {
-                longitude: -64.75,
-                latitude: 32.30,
-                lonRadius: 0.32,
-                latRadius: 0.18,
-                elevationByte: 18,
-                landValue: 0.62,
-                subBasin: EARTH_SB_IDS.atlland
-            };
-
-            let dx = long-bermuda.longitude;
+        for(let patch of this.explicitLandPatches){
+            let dx = long-patch.longitude;
             if(dx>180) dx -= 360;
             if(dx<-180) dx += 360;
-            let dy = lat-bermuda.latitude;
+            let dy = lat-patch.latitude;
 
             if(
-                sq(dx/bermuda.lonRadius) +
-                sq(dy/bermuda.latRadius) <= 1
-            ) return bermuda;
+                sq(dx/patch.lonRadius) +
+                sq(dy/patch.latRadius) <= 1
+            ) return patch;
         }
 
         return null;

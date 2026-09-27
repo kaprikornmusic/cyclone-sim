@@ -2022,18 +2022,24 @@ UI.init = function(){
                 }
                 strokeWeight(1);
             }else{
-                text('Timeline of ' + seasonName(target), BOX_WIDTH * 0.5, BOX_HEIGHT * 0.03);
+                text('Timeline of ' + seasonName(target) + '  •  Full Year · Jan–Dec', BOX_WIDTH * 0.5, BOX_HEIGHT * 0.03);
                 stroke(COLORS.UI.text);
                 line(lBound,bBound,rBound,bBound);
                 line(lBound,bBound,lBound,tBound);
-                textSize(13);
-                let M = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+                textSize(12);
+                let M = [
+                    'Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'
+                ];
                 let yearStartTick = UI.viewBasin.tickFromMoment(
                     moment.utc([target,0,1]).startOf('day')
                 );
                 let yearEndTick = UI.viewBasin.tickFromMoment(
                     moment.utc([target+1,0,1]).startOf('day')
                 );
+
+                // Draw an explicit 12-column calendar grid. Empty months keep
+                // their own visible cells instead of disappearing visually.
                 for(let i=0;i<12;i++){
                     let monthStartTick = UI.viewBasin.tickFromMoment(
                         moment.utc([target,i,1]).startOf('day')
@@ -2044,20 +2050,35 @@ UI.init = function(){
                             moment.utc([target,i+1,1]).startOf('day');
                     let monthEndTick =
                         UI.viewBasin.tickFromMoment(monthEndMoment);
+
                     let x0 = map(
-                        monthEndTick,
+                        monthStartTick,
                         yearStartTick,yearEndTick,
                         lBound,rBound,true
                     );
                     let x1 = map(
-                        (monthStartTick+monthEndTick)/2,
+                        monthEndTick,
                         yearStartTick,yearEndTick,
                         lBound,rBound,true
                     );
+                    let xc = (x0+x1)/2;
+
+                    noFill();
                     stroke(COLORS.UI.text);
-                    line(x0,bBound,x0,tBound);
+                    rect(x0,tBound,max(x1-x0,1),bBound-tBound);
+
                     noStroke();
-                    text(M[i],x1,bBound+BOX_HEIGHT*0.02);
+                    fill(COLORS.UI.text);
+                    textAlign(CENTER,TOP);
+                    text(M[i],xc,bBound+BOX_HEIGHT*0.02);
+                }
+
+                // Horizontal row guides complete the year table across all
+                // twelve months, including rows with no storm bar in a month.
+                stroke(COLORS.UI.text);
+                for(let i=0;i<TIMELINE_ROW_COUNT;i++){
+                    let y = timelineRowY(i)+TIMELINE_BAR_HEIGHT;
+                    line(lBound,y,rBound,y);
                 }
                 noStroke();
                 for(let i=0;i<parts.length;i++){

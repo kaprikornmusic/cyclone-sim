@@ -30,6 +30,11 @@ ACTIVE_ATTRIBS[SIM_MODE_EXPERIMENTAL] = [
     'kaboom'
 ];
 
+// Persist transition duration across save/load; missing legacy values start at zero.
+ACTIVE_ATTRIBS[SIM_MODE_NORMAL] = ACTIVE_ATTRIBS.defaults.concat([
+    'weakStructureHours', 'coldCoreHours'
+]);
+
 // ---- Season Curve ---- //
 
 const SEASON_CURVE = {};
@@ -1157,9 +1162,19 @@ STORM_ALGORITHM.defaults.core = function(sys,u){
 };
 
 STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
+    const established = sys.type===TROP || sys.type===SUBTROP;
+    const oldOrganization = sys.organization;
+    const oldLowerCore = sys.lowerWarmCore;
+    const oldUpperCore = sys.upperWarmCore;
     STORM_ALGORITHM.defaults.core(sys,u);
 
     let lnd = u.land();
+    if(established){
+        // A brief shear encounter cannot erase an established core in one hour.
+        sys.organization = max(sys.organization,oldOrganization-(lnd ? 0.08 : 0.04));
+        sys.lowerWarmCore = max(sys.lowerWarmCore,oldLowerCore-0.025);
+        sys.upperWarmCore = max(sys.upperWarmCore,oldUpperCore-0.035);
+    }
     if(lnd) return;
 
     let SST = u.f("SST");
@@ -1876,6 +1891,38 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
     }
 
     STORM_ALGORITHM.defaults.typeDetermination(sys,u);
+};
+
+// Apply duration-based decay gates after the existing genesis/bridge rules.
+const normalTypeCandidate = STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination;
+STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
+    const previousType = sys.type;
+    if(previousType!==TROP && previousType!==SUBTROP){
+        sys.weakStructureHours = 0;
+        sys.coldCoreHours = 0;
+        normalTypeCandidate(sys,u);
+        return;
+    }
+
+    const weak = (sys.organization<0.22 && sys.windSpeed<34) || sys.windSpeed<17;
+    const jetDistance = sys.basin.hemY(sys.pos.y)-u.f("jetstream");
+    const coldEnvironment = jetDistance<15 ||
+        (jetDistance<45 && u.f("SST")<24);
+    const cold = sys.lowerWarmCore<0.40 && sys.upperWarmCore<0.40 &&
+        coldEnvironment;
+    sys.weakStructureHours = weak ? (sys.weakStructureHours || 0)+1 : 0;
+    sys.coldCoreHours = cold ? (sys.coldCoreHours || 0)+1 : 0;
+    normalTypeCandidate(sys,u);
+
+    if(sys.type===EXTROP || sys.type===TROPWAVE){
+        // Shear-driven disorganization alone is not extratropical transition.
+        if(sys.type===EXTROP && sys.coldCoreHours>=24) return;
+        if(sys.weakStructureHours>=18){
+            sys.type = TROPWAVE;
+            return;
+        }
+        sys.type = previousType;
+    }
 };
 
 STORM_ALGORITHM.defaults.typeDetermination = function(sys,u){

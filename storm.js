@@ -1343,63 +1343,58 @@ class ActiveSystem extends StormData{
             let storm = this.fetchStorm();
             let seas = basin.fetchSeason(-1,true,true);
 
-            // Dense wind-footprint sampling. The previous sparse
-            // 8-direction rings could miss narrow coastlines, making impacts
-            // appear landfall-only. Sample the whole circulation with
-            // 16 azimuths across 6 radial bands plus the center.
+            // Area-sampled wind footprint. Sampling a regular grid rather
+            // than a few radial spokes prevents narrow or angled coastlines
+            // from falling between samples when the center remains offshore.
             let impactRadius = map(
                 constrain(this.windSpeed,20,150),
                 20,150,
-                10,52,
+                12,65,
                 true
             );
             if(impactType===SUBTROP)
-                impactRadius *= 1.35;
+                impactRadius *= 1.25;
 
-            let impactSamples = [{
-                x:x,
-                y:y,
-                windFactor:1,
-                weight:0.22
-            }];
+            const IMPACT_GRID_STEP = 5;
+            const FIELD_EXPOSURE_SCALE = 1.35;
+            let impactSamples = [];
 
-            const IMPACT_AZIMUTHS = 16;
-            const IMPACT_RADIAL_BANDS = 6;
-            const RING_EXPOSURE_WEIGHT = 0.78;
+            for(
+                let dx=-impactRadius;
+                dx<=impactRadius;
+                dx+=IMPACT_GRID_STEP
+            ){
+                for(
+                    let dy=-impactRadius;
+                    dy<=impactRadius;
+                    dy+=IMPACT_GRID_STEP
+                ){
+                    let dist = sqrt(dx*dx+dy*dy);
+                    if(dist>impactRadius)
+                        continue;
 
-            for(let ring=1;ring<=IMPACT_RADIAL_BANDS;ring++){
-                let inner = (ring-1)/IMPACT_RADIAL_BANDS;
-                let outer = ring/IMPACT_RADIAL_BANDS;
-                let radiusNorm = sqrt((sq(inner)+sq(outer))/2);
-                let annulusFraction = sq(outer)-sq(inner);
-                let sampleWeight =
-                    RING_EXPOSURE_WEIGHT*
-                    annulusFraction/
-                    IMPACT_AZIMUTHS;
+                    let radiusNorm = impactRadius ?
+                        dist/impactRadius : 0;
 
-                // Smooth radial wind decay: broad enough for coastal
-                // wind impacts while keeping the strongest winds near center.
-                let windFactor =
-                    1-0.62*pow(radiusNorm,1.30);
+                    // Smooth, continuous radial wind profile. Winds remain
+                    // meaningful near the outer edge, representing broad
+                    // tropical-storm-force impacts well away from the center.
+                    let windFactor =
+                        0.42+0.58*(1-pow(radiusNorm,1.35));
 
-                // Stagger adjacent rings so their spokes do not line up,
-                // reducing gaps over irregular coastlines.
-                let offset = ring%2 ? TAU/(IMPACT_AZIMUTHS*2) : 0;
-
-                for(let i=0;i<IMPACT_AZIMUTHS;i++){
-                    let a = offset+i*TAU/IMPACT_AZIMUTHS;
                     impactSamples.push({
-                        x:x+cos(a)*impactRadius*radiusNorm,
-                        y:y+sin(a)*impactRadius*radiusNorm,
-                        windFactor,
-                        weight:sampleWeight
+                        x:x+dx,
+                        y:y+dy,
+                        windFactor
                     });
                 }
             }
 
-            // One vulnerability/noise draw per storm per tick, matching the
-            // old model's randomness without adding independent noise at each
-            // footprint sample.
+            let sampleWeight = impactSamples.length ?
+                FIELD_EXPOSURE_SCALE/impactSamples.length : 0;
+
+            // One vulnerability/noise draw per storm per tick keeps the
+            // footprint internally coherent and avoids random hot/cold spots.
             let modifier = pow(1.5,randomGaussian());
             let damageNoise = pow(1.1,random(-1,1));
             let deathNoise = pow(1.1,random(-1,1));
@@ -1443,14 +1438,13 @@ class ActiveSystem extends StormData{
                 let damPot = (pow(1.062,localWind)-1)*modifier;
                 let dedPot = (pow(1.045,localWind)-1)*modifier;
                 let dam =
-                    pop*damPot*3.3*damageNoise*sample.weight;
+                    pop*damPot*3.3*damageNoise*sampleWeight;
 
-                // Keep fractional fatalities while combining the complete
-                // footprint, then round once per tick. This prevents offshore
-                // wind impacts from disappearing because each small sample
-                // rounded to zero independently.
+                // Keep fatalities fractional internally. Small offshore wind
+                // impacts can then accumulate over many hours instead of
+                // being rounded to zero every tick.
                 let ded =
-                    pop*dedPot*0.0000017*deathNoise*sample.weight/10;
+                    pop*dedPot*0.0000017*deathNoise*sampleWeight/10;
 
                 if(!storm.inBasinTC || basin.subInBasin(sub)){
                     stormDamageImpact += dam;
@@ -1466,7 +1460,7 @@ class ActiveSystem extends StormData{
             if(stormDamageImpact || stormDeathImpact){
                 storm.damage += stormDamageImpact;
                 storm.damage = round(storm.damage*100)/100;
-                storm.deaths += round(stormDeathImpact);
+                storm.deaths += stormDeathImpact;
             }
 
             for(let subId in subBasinImpacts){
@@ -1474,7 +1468,7 @@ class ActiveSystem extends StormData{
                 let impact = subBasinImpacts[subId];
                 stats.damage += impact.damage;
                 stats.damage = round(stats.damage*100)/100;
-                stats.deaths += round(impact.deaths);
+                stats.deaths += impact.deaths;
             }
 
             // Landfall count remains center-based: peripheral winds reaching

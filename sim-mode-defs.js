@@ -1617,34 +1617,85 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].typeDetermination = function(sys,u){
         let c = sys.coord();
         let latitude = abs(c.latitude);
 
-        if(latitude>=32 && latitude<=46){
-            // Mid-latitude subtropical storms need a clearer structural
-            // collapse before becoming extratropical, and can tropicalize
-            // once the upper warm core becomes sufficiently established.
-            sys.type =
-                sys.lowerWarmCore<0.46 ? EXTROP :
-                ((sys.organization<0.28 && sys.windSpeed<45) || sys.windSpeed<18) ?
-                    (sys.upperWarmCore<0.42 ? EXTROP : TROPWAVE) :
-                    (sys.upperWarmCore<0.52 ? SUBTROP : TROP);
+        // Count the current consecutive subtropical advisory run. A newly
+        // formed subtropical cyclone must remain structurally subtropical long
+        // enough to produce a visible multi-advisory track instead of a
+        // single isolated square.
+        let consecutiveSubtropAdvisories = 0;
+        if(storm){
+            for(let i=storm.record.length-1;i>=0;i--){
+                if(storm.record[i].type===SUBTROP)
+                    consecutiveSubtropAdvisories++;
+                else
+                    break;
+            }
+        }
+
+        let severeStructuralCollapse =
+            sys.lowerWarmCore<0.40 ||
+            sys.windSpeed<15 ||
+            (
+                sys.organization<0.18 &&
+                sys.windSpeed<28
+            );
+
+        if(
+            consecutiveSubtropAdvisories<3 &&
+            !severeStructuralCollapse
+        ){
+            sys.type = SUBTROP;
             return;
         }
-    }
 
-    if(sys.type===EXTROP){
-        // Favorable extratropical lows can transition more readily, but must
-        // still pass through Subtropical or Tropical Wave/Low before TROP.
-        if(sys.lowerWarmCore<0.48){
+        // Once established, subtropical cyclones use hysteresis everywhere
+        // in the Atlantic, not only at 32-46N. They only fall back to a wave
+        // after genuine weakening, tropicalize after a clearly warm upper
+        // core develops, or become post-tropical after warm-core collapse.
+        let midLatitude = latitude>=32 && latitude<=46;
+        let lowerCoreCollapse = midLatitude ? 0.44 : 0.48;
+        let upperCoreCollapse = midLatitude ? 0.42 : 0.46;
+        let tropicalCoreThreshold = midLatitude ? 0.54 : 0.56;
+        let weakStructure =
+            (
+                sys.organization<(midLatitude ? 0.24 : 0.27) &&
+                sys.windSpeed<38
+            ) ||
+            sys.windSpeed<17;
+
+        if(sys.lowerWarmCore<lowerCoreCollapse){
             sys.type = EXTROP;
             return;
         }
 
-        let organized = sys.organization>=0.28 && sys.windSpeed>=18;
+        if(weakStructure){
+            sys.type =
+                sys.upperWarmCore<upperCoreCollapse ?
+                    EXTROP :
+                    TROPWAVE;
+            return;
+        }
 
-        if(sys.upperWarmCore<0.42)
-            sys.type = organized ? SUBTROP : EXTROP;
-        else
-            sys.type = TROPWAVE;
+        sys.type =
+            sys.upperWarmCore>=tropicalCoreThreshold ?
+                TROP :
+                SUBTROP;
+        return;
+    }
 
+    if(sys.type===EXTROP){
+        // Require a visible tropical-wave/low precursor before the first
+        // subtropical or tropical cyclone stage. This prevents an organized
+        // extratropical low from appearing as a one-advisory subtropical storm
+        // with no precursor track.
+        if(
+            sys.lowerWarmCore<0.48 ||
+            sys.upperWarmCore<0.42
+        ){
+            sys.type = EXTROP;
+            return;
+        }
+
+        sys.type = TROPWAVE;
         return;
     }
 

@@ -522,10 +522,128 @@ class Land{
         this.calculate();
     }
 
+    explicitLandPatch(long, lat){
+        if(long instanceof Coordinate)
+            ({longitude: long, latitude: lat} = long);
+
+        // Bermuda is intentionally slightly enlarged relative to its real
+        // footprint so it remains visible and interactable at 960x540.
+        if(
+            this.earth &&
+            this.basin.mainSubBasin===EARTH_SB_IDS.atl
+        ){
+            const bermuda = {
+                longitude: -64.75,
+                latitude: 32.30,
+                lonRadius: 0.32,
+                latRadius: 0.18,
+                elevationByte: 18,
+                landValue: 0.62,
+                subBasin: EARTH_SB_IDS.atlland
+            };
+
+            let dx = long-bermuda.longitude;
+            if(dx>180) dx -= 360;
+            if(dx<-180) dx += 360;
+            let dy = lat-bermuda.latitude;
+
+            if(
+                sq(dx/bermuda.lonRadius) +
+                sq(dy/bermuda.latRadius) <= 1
+            ) return bermuda;
+        }
+
+        return null;
+    }
+
+    applyExplicitLandPatches(){
+        if(
+            !this.earth ||
+            this.basin.mainSubBasin!==EARTH_SB_IDS.atl
+        ) return;
+
+        const {fullW: W, fullH: H} = fullDimensions();
+        let img = this.map;
+        let pixels = img.pixels;
+        let sx = W/WIDTH;
+        let sy = H/HEIGHT;
+
+        // Only scan a small box around Bermuda rather than the whole map.
+        let center = Coordinate.convertToXY(
+            this.basin.mapType,
+            -64.75,
+            32.30
+        );
+        let west = Coordinate.convertToXY(
+            this.basin.mapType,
+            -65.07,
+            32.30
+        );
+        let east = Coordinate.convertToXY(
+            this.basin.mapType,
+            -64.43,
+            32.30
+        );
+        let north = Coordinate.convertToXY(
+            this.basin.mapType,
+            -64.75,
+            32.48
+        );
+        let south = Coordinate.convertToXY(
+            this.basin.mapType,
+            -64.75,
+            32.12
+        );
+
+        let minX = max(
+            0,
+            floor(min(west.x,east.x)*sx)-2
+        );
+        let maxX = min(
+            W-1,
+            ceil(max(west.x,east.x)*sx)+2
+        );
+        let minY = max(
+            0,
+            floor(min(north.y,south.y)*sy)-2
+        );
+        let maxY = min(
+            H-1,
+            ceil(max(north.y,south.y)*sy)+2
+        );
+
+        for(let i=minX;i<=maxX;i++){
+            for(let j=minY;j<=maxY;j++){
+                let logicalX = (i+0.5)/sx;
+                let logicalY = (j+0.5)/sy;
+                let coord = Coordinate.convertFromXY(
+                    this.basin.mapType,
+                    logicalX,
+                    logicalY
+                );
+                let patch = this.explicitLandPatch(coord);
+                if(!patch)
+                    continue;
+
+                let index = 4*(j*W+i);
+                pixels[index] = patch.elevationByte;
+                pixels[index+1] = 255;
+                pixels[index+2] = patch.subBasin;
+                pixels[index+3] = 255;
+            }
+        }
+
+        img.updatePixels();
+    }
+
     get(long, lat){
         if(long instanceof Coordinate)
             ({longitude: long, latitude: lat} = long);
         if(this.earth){
+            let patch = this.explicitLandPatch(long,lat);
+            if(patch)
+                return patch.landValue;
+
             let img = this.wholeEarthMap;
             long = (long + 180) % 360 - 180;
             let x1 = floor(map(long,-180,180,0,img.width));
@@ -560,6 +678,10 @@ class Land{
         if(long instanceof Coordinate)
             ({longitude: long, latitude: lat} = long);
         if(this.earth){
+            let patch = this.explicitLandPatch(long,lat);
+            if(patch)
+                return patch.subBasin;
+
             let img = this.wholeEarthMap;
             long = (long + 180) % 360 - 180;
             let x1 = floor(map(long,-180,180,0,img.width));
@@ -604,6 +726,7 @@ class Land{
                 sector.copy(earth, west_x, north_y, east_x - west_x, south_y - north_y, 0, 0, W, H);
             }
             sector.loadPixels();
+            this.applyExplicitLandPatches();
             // for(let i = 0; i < sector.pixels.length; i += 4){
             //     let h = map(sqrt(map(sector.pixels[i],12,150,0,1,true)),0,1,0.501,1);
             //     sector.pixels[i] = floor(h * 255);

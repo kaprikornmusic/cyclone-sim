@@ -1396,9 +1396,9 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     }
 
     if(sys.type===TROP && sys.windSpeed>=88){
-        // Use a weighted environmental score instead of multiplying the
-        // ingredients. One merely marginal ingredient should not collapse the
-        // entire major-hurricane potential to zero.
+        // Advisory winds are rounded to 5 kt, so the 96 kt major-hurricane
+        // classification is effectively first reached at a recorded 100 kt.
+        // Use soft resistance near that threshold rather than a hard cap.
         let majorSst =
             map(SST,24.5,29.5,0,1,true);
         let majorMoisture =
@@ -1415,64 +1415,40 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
             0.20*majorOrganization;
 
         let originalWind = sys.windSpeed;
-        const MAJOR_HARD_BLOCK = 0.40;
-        const MAJOR_FULL_GATE = 0.52;
 
-        // Only clearly unfavorable environments are prevented from crossing
-        // the 96 kt major threshold. Moderately favorable environments can
-        // produce low-end Cat 3 storms, while better environments open the
-        // ceiling progressively into Cat 4-5 range.
-        if(
-            majorEnvironment<MAJOR_HARD_BLOCK &&
-            sys.windSpeed>=95.5
-        ){
-            sys.windSpeed = 95.4;
-        }else{
-            let environmentalCeiling = map(
-                majorEnvironment,
-                MAJOR_HARD_BLOCK,1,
-                100,155,
-                true
-            );
+        // Slow the 92-100 kt transition in mediocre environments without
+        // making it impossible. Good environments encounter very little
+        // resistance and can cross into major-hurricane intensity normally.
+        if(sys.windSpeed>=92 && sys.windSpeed<100){
+            let thresholdResistance =
+                map(sys.windSpeed,92,100,0.02,0.34,true) *
+                map(majorEnvironment,0,0.80,1.20,0.12,true);
+            sys.windSpeed -= thresholdResistance;
+        }
 
-            if(sys.windSpeed>environmentalCeiling){
-                let excess = sys.windSpeed-environmentalCeiling;
-                sys.windSpeed -= max(0.08,0.42*excess);
-            }
+        // Once a storm has actually reached major intensity, apply stronger
+        // but still continuous damping so majors remain possible while the
+        // old 8-10+ major seasons become less common.
+        if(sys.windSpeed>=100){
+            let majorBrake =
+                map(sys.windSpeed,100,135,0.08,0.42,true) *
+                map(majorEnvironment,0,0.85,1.15,0.18,true);
+            sys.windSpeed -= majorBrake;
+        }
 
-            // A modest threshold brake around 96-105 kt avoids returning to
-            // the old situation where almost every hurricane became a major.
-            if(
-                sys.windSpeed>=96 &&
-                majorEnvironment<MAJOR_FULL_GATE
-            ){
-                let thresholdBrake =
-                    map(
-                        majorEnvironment,
-                        MAJOR_HARD_BLOCK,MAJOR_FULL_GATE,
-                        0.18,0.03,true
-                    );
-                sys.windSpeed -= thresholdBrake;
-            }
-
-            if(sys.windSpeed>=115){
-                let extremeBrake =
-                    map(sys.windSpeed,115,155,0.02,0.16,true) *
-                    map(
-                        majorEnvironment,
-                        MAJOR_FULL_GATE,1,
-                        0.75,0.18,true
-                    );
-                sys.windSpeed -= extremeBrake;
-            }
+        if(sys.windSpeed>=120){
+            let extremeBrake =
+                map(sys.windSpeed,120,155,0.04,0.24,true) *
+                map(majorEnvironment,0.45,1,0.85,0.16,true);
+            sys.windSpeed -= extremeBrake;
         }
 
         let removedWind = max(0,originalWind-sys.windSpeed);
         if(removedWind>0){
-            sys.pressure += 0.24*removedWind;
+            sys.pressure += 0.18*removedWind;
             sys.organization = constrain(
                 sys.organization-
-                0.0006*removedWind*(1-majorEnvironment),
+                0.0004*removedWind*(1-majorEnvironment),
                 0,1
             );
         }

@@ -1864,15 +1864,7 @@ UI.init = function(){
                             if(endSeasonTick===undefined || dissTime>endSeasonTick) endSeasonTick = dissTime;
                         }
                     }
-                    for(let n=0;n<TCs.length-1;n++){
-                        let t0 = TCs[n];
-                        let t1 = TCs[n+1];
-                        if(t0.enterTime>t1.enterTime){
-                            TCs[n] = t1;
-                            TCs[n+1] = t0;
-                            if(n>0) n -= 2;
-                        }
-                    }
+                    TCs.sort((a,b)=>a.enterTime-b.enterTime);
                     let sMoment = UI.viewBasin.tickMoment(beginSeasonTick);
                     sMonth = sMoment.month();
                     sMoment.startOf('month');
@@ -1934,13 +1926,12 @@ UI.init = function(){
         const rBound = BOX_WIDTH*0.95;
         const tBound = BOX_HEIGHT*0.2;
         const bBound = BOX_HEIGHT*0.93;
-        const TIMELINE_ROW_HEIGHT = 15;
-        const timelineRowCount = Math.max(
-            1,
-            Math.floor((bBound-tBound-10)/TIMELINE_ROW_HEIGHT)+1
-        );
+        const TIMELINE_ROW_COUNT = 7;
+        const TIMELINE_BAR_HEIGHT = 10;
+        const timelineRowGap =
+            (bBound-tBound-TIMELINE_BAR_HEIGHT)/(TIMELINE_ROW_COUNT-1);
         const timelineRowY = index=>
-            tBound+(index%timelineRowCount)*TIMELINE_ROW_HEIGHT;
+            tBound+(index%TIMELINE_ROW_COUNT)*timelineRowGap;
 
         let timelineBox = timeline_container.append(false,0,0,BOX_WIDTH,BOX_HEIGHT,function(s){
             let target = stormInfoPanel.target;

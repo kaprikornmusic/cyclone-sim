@@ -1337,35 +1337,121 @@ class ActiveSystem extends StormData{
 
         let rType = this.fetchStorm().getStormDataByTick(basin.tick);
         rType = rType && rType.type;
-        if(tropOrSub(rType!==null ? rType : this.type)){
-            let pop = lnd ? round(250000*(1+basin.hemY(y)/HEIGHT)*pow(0.8,map(lnd,0.5,1,0,30))) : 0;
-            let damPot = pow(1.062,this.windSpeed)-1;   // damage potential
-            let dedPot = pow(1.045,this.windSpeed)-1;    // death potential
-            let m = pow(1.5,randomGaussian());      // modifier
-            damPot *= m;
-            dedPot *= m;
-            let dam = pop*damPot*3.3*pow(1.1,random(-1,1));
-            let ded = round(pop*dedPot*0.0000017*pow(1.1,random(-1,1)));
-            ded = round(ded/10);
-            let lf = 0;
-            if(!prevland && lnd) lf = 1;
-            let sub = land.getSubBasin(Coordinate.convertFromXY(basin.mapType,x,y));
-            if(!this.fetchStorm().inBasinTC || basin.subInBasin(sub)){
-                this.fetchStorm().damage += dam;
-                this.fetchStorm().damage = round(this.fetchStorm().damage*100)/100;
-                this.fetchStorm().deaths += ded;
-                this.fetchStorm().landfalls += lf;
-            }
+        let impactType = rType!==null ? rType : this.type;
+        if(tropOrSub(impactType)){
+            let storm = this.fetchStorm();
             let seas = basin.fetchSeason(-1,true,true);
-            for(let subId of basin.forSubBasinChain(sub)){
-                if(basin.subInBasin(subId)){
-                    let s = seas.stats(subId);
-                    s.damage += dam;
-                    s.damage = round(s.damage*100)/100;
-                    s.deaths += ded;
-                    s.landfalls += lf;
+
+            // Approximate the cyclone's damaging wind footprint instead of
+            // applying all impacts only at the storm center. The footprint
+            // expands with maximum sustained wind, and subtropical systems
+            // are slightly broader than fully tropical systems.
+            let impactRadius = map(
+                constrain(this.windSpeed,20,150),
+                20,150,
+                5,30,
+                true
+            );
+            if(impactType===SUBTROP)
+                impactRadius *= 1.25;
+
+            // Keep the total exposure near the old center-point model when
+            // the whole wind field is over land, while allowing offshore
+            // cyclones to affect nearby coasts.
+            let impactSamples = [{
+                x:x,
+                y:y,
+                windFactor:1,
+                weight:0.8
+            }];
+            let rings = [
+                {radius:0.35, windFactor:0.82, weight:0.045, offset:0},
+                {radius:0.70, windFactor:0.58, weight:0.025, offset:PI/8},
+                {radius:1.00, windFactor:0.40, weight:0.015, offset:0}
+            ];
+            for(let ring of rings){
+                for(let i=0;i<8;i++){
+                    let a = ring.offset+i*TAU/8;
+                    impactSamples.push({
+                        x:x+cos(a)*impactRadius*ring.radius,
+                        y:y+sin(a)*impactRadius*ring.radius,
+                        windFactor:ring.windFactor,
+                        weight:ring.weight
+                    });
                 }
             }
+
+            // One vulnerability/noise draw per storm per tick, matching the
+            // old model's randomness without consuming extra RNG for every
+            // sample point.
+            let modifier = pow(1.5,randomGaussian());
+            let damageNoise = pow(1.1,random(-1,1));
+            let deathNoise = pow(1.1,random(-1,1));
+
+            for(let sample of impactSamples){
+                if(
+                    sample.x<0 || sample.x>=WIDTH ||
+                    sample.y<0 || sample.y>=HEIGHT
+                ) continue;
+
+                let localWind = this.windSpeed*sample.windFactor;
+                if(localWind<20)
+                    continue;
+
+                let coord = Coordinate.convertFromXY(
+                    basin.mapType,
+                    sample.x,
+                    sample.y
+                );
+                let sampleLand = land.get(coord);
+                if(!sampleLand)
+                    continue;
+
+                let sub = land.getSubBasin(coord);
+                let pop = round(
+                    250000*
+                    (1+basin.hemY(sample.y)/HEIGHT)*
+                    pow(0.8,map(sampleLand,0.5,1,0,30))
+                );
+                let damPot = (pow(1.062,localWind)-1)*modifier;
+                let dedPot = (pow(1.045,localWind)-1)*modifier;
+                let dam =
+                    pop*damPot*3.3*damageNoise*sample.weight;
+                let ded = round(
+                    pop*dedPot*0.0000017*deathNoise*sample.weight
+                );
+                ded = round(ded/10);
+
+                if(!storm.inBasinTC || basin.subInBasin(sub)){
+                    storm.damage += dam;
+                    storm.damage = round(storm.damage*100)/100;
+                    storm.deaths += ded;
+                }
+
+                for(let subId of basin.forSubBasinChain(sub)){
+                    if(basin.subInBasin(subId)){
+                        let stats = seas.stats(subId);
+                        stats.damage += dam;
+                        stats.damage = round(stats.damage*100)/100;
+                        stats.deaths += ded;
+                    }
+                }
+            }
+
+            // Landfall count remains center-based: peripheral winds reaching
+            // land do not themselves count as a landfall.
+            let lf = !prevland && lnd ? 1 : 0;
+            let centerSub = land.getSubBasin(
+                Coordinate.convertFromXY(basin.mapType,x,y)
+            );
+            if(!storm.inBasinTC || basin.subInBasin(centerSub))
+                storm.landfalls += lf;
+
+            for(let subId of basin.forSubBasinChain(centerSub)){
+                if(basin.subInBasin(subId))
+                    seas.stats(subId).landfalls += lf;
+            }
+
             seas.modified = true;
         }
 

@@ -1396,43 +1396,56 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     }
 
     if(sys.type===TROP && sys.windSpeed>=88){
-        // Stronger threshold-focused brake. Keep Cat 1-2 hurricanes viable,
-        // but make the jump into major-hurricane intensity less automatic.
-        let eliteEnvironment =
-            map(SST,26.2,30.5,0,1,true) *
-            map(moisture,0.48,0.80,0,1,true) *
-            map(shear,18,3,0,1,true);
+        // Major-hurricane entry is now environment-gated instead of relying
+        // only on a small continuous brake. This prevents brief one-advisory
+        // crossings of 96 kt from making too many storms count as majors.
+        let majorEnvironment =
+            map(SST,26.5,30.5,0,1,true) *
+            map(moisture,0.50,0.82,0,1,true) *
+            map(shear,16,2,0,1,true) *
+            map(sys.organization,0.74,0.98,0,1,true);
 
-        // Very small damping below the major threshold, then a much steeper
-        // increase once 96 kt is reached.
-        let preMajorBrake =
-            sys.windSpeed<96 ?
-                map(sys.windSpeed,88,96,0.010,0.045,true) :
-                0;
-        let majorBrake =
-            sys.windSpeed>=96 ?
-                map(sys.windSpeed,96,145,0.105,0.315,true) :
-                0;
-        let extremeBrake =
-            sys.windSpeed>=115 ?
-                map(sys.windSpeed,115,155,0.025,0.160,true) :
-                0;
+        let originalWind = sys.windSpeed;
 
-        // Perfect environments can offset much of the damping, but still need
-        // sustained favorable conditions to support Cat 4-5 intensity.
-        let brake =
-            (preMajorBrake+majorBrake+extremeBrake)*
-            map(eliteEnvironment,0,1,1.12,0.42,true);
+        // Below this environmental threshold, keep the cyclone in the
+        // upper-Cat-2 range. This is a conditional ceiling, not a global cap:
+        // a better environment immediately allows the storm to intensify.
+        if(majorEnvironment<0.58 && sys.windSpeed>=95.5){
+            sys.windSpeed = 95.4;
+        }else{
+            // Once the environment is good enough for a major, open the
+            // allowable intensity progressively. Marginal major environments
+            // favor low-end Cat 3; elite environments can still support Cat 5.
+            let environmentalCeiling = map(
+                majorEnvironment,
+                0.58,1,
+                101,155,
+                true
+            );
 
-        sys.windSpeed = max(0,sys.windSpeed-brake);
+            if(sys.windSpeed>environmentalCeiling){
+                let excess = sys.windSpeed-environmentalCeiling;
+                sys.windSpeed -= max(0.20,0.72*excess);
+            }
 
-        // Feed some of the brake back into pressure/organization so the
-        // default core does not immediately restore the lost wind next tick.
-        sys.pressure += 0.40*brake;
-        if(sys.windSpeed>=96){
+            // Additional high-end damping makes Cat 4/5 less persistent
+            // unless the environment is near the top of the scale.
+            if(sys.windSpeed>=110){
+                let extremeBrake =
+                    map(sys.windSpeed,110,155,0.04,0.32,true) *
+                    map(majorEnvironment,0.58,1,1.00,0.30,true);
+                sys.windSpeed -= extremeBrake;
+            }
+        }
+
+        let removedWind = max(0,originalWind-sys.windSpeed);
+        if(removedWind>0){
+            // Feed the adjustment back into pressure and organization so the
+            // default core does not simply restore the excess next hour.
+            sys.pressure += 0.75*removedWind;
             sys.organization = constrain(
                 sys.organization-
-                0.0015*(1-eliteEnvironment),
+                0.0025*removedWind*(1-majorEnvironment),
                 0,1
             );
         }

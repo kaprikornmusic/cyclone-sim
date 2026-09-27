@@ -1402,6 +1402,7 @@ class ActiveSystem extends StormData{
             let stormDamageImpact = 0;
             let stormDeathImpact = 0;
             let subBasinImpacts = {};
+            let explicitPatchHits = new Set();
 
             let addSubBasinImpact = (subId,dam,ded)=>{
                 if(!subBasinImpacts[subId])
@@ -1410,41 +1411,47 @@ class ActiveSystem extends StormData{
                 subBasinImpacts[subId].deaths += ded;
             };
 
-            for(let sample of impactSamples){
-                if(
-                    sample.x<0 || sample.x>=WIDTH ||
-                    sample.y<0 || sample.y>=HEIGHT
-                ) continue;
-
-                let localWind = this.windSpeed*sample.windFactor;
+            let accumulateImpact = (
+                sampleX,
+                sampleY,
+                localWind,
+                weight,
+                forcedPatch
+            )=>{
                 if(localWind<20)
-                    continue;
+                    return;
 
                 let coord = Coordinate.convertFromXY(
                     basin.mapType,
-                    sample.x,
-                    sample.y
+                    sampleX,
+                    sampleY
                 );
-                let sampleLand = land.get(coord);
+                let patch = forcedPatch || land.explicitLandPatch(coord);
+                let sampleLand = patch ? patch.landValue : land.get(coord);
                 if(!sampleLand)
-                    continue;
+                    return;
 
-                let sub = land.getSubBasin(coord);
+                if(patch)
+                    explicitPatchHits.add(patch.id);
+
+                let sub = patch ?
+                    patch.subBasin :
+                    land.getSubBasin(coord);
                 let pop = round(
                     250000*
-                    (1+basin.hemY(sample.y)/HEIGHT)*
+                    (1+basin.hemY(sampleY)/HEIGHT)*
                     pow(0.8,map(sampleLand,0.5,1,0,30))
                 );
                 let damPot = (pow(1.062,localWind)-1)*modifier;
                 let dedPot = (pow(1.045,localWind)-1)*modifier;
                 let dam =
-                    pop*damPot*3.3*damageNoise*sampleWeight;
+                    pop*damPot*3.3*damageNoise*weight;
 
                 // Keep fatalities fractional internally. Small offshore wind
                 // impacts can then accumulate over many hours instead of
                 // being rounded to zero every tick.
                 let ded =
-                    pop*dedPot*0.0000017*deathNoise*sampleWeight/10;
+                    pop*dedPot*0.0000017*deathNoise*weight/10;
 
                 if(!storm.inBasinTC || basin.subInBasin(sub)){
                     stormDamageImpact += dam;
@@ -1455,6 +1462,53 @@ class ActiveSystem extends StormData{
                     if(basin.subInBasin(subId))
                         addSubBasinImpact(subId,dam,ded);
                 }
+            };
+
+            for(let sample of impactSamples){
+                if(
+                    sample.x<0 || sample.x>=WIDTH ||
+                    sample.y<0 || sample.y>=HEIGHT
+                ) continue;
+
+                accumulateImpact(
+                    sample.x,
+                    sample.y,
+                    this.windSpeed*sample.windFactor,
+                    sampleWeight
+                );
+            }
+
+            // Tiny explicit islands such as Bermuda can fall between the
+            // regular 5 px impact grid. If the wind footprint reaches one,
+            // sample that island's center once unless the normal grid already
+            // hit the same explicit patch.
+            for(let patch of land.explicitLandPatches){
+                if(explicitPatchHits.has(patch.id))
+                    continue;
+
+                let p = Coordinate.convertToXY(
+                    basin.mapType,
+                    patch.longitude,
+                    patch.latitude
+                );
+                let dx = p.x-x;
+                let dy = p.y-y;
+                let dist = sqrt(dx*dx+dy*dy);
+                if(dist>impactRadius)
+                    continue;
+
+                let radiusNorm = impactRadius ?
+                    dist/impactRadius : 0;
+                let windFactor =
+                    0.42+0.58*(1-pow(radiusNorm,1.35));
+
+                accumulateImpact(
+                    p.x,
+                    p.y,
+                    this.windSpeed*windFactor,
+                    sampleWeight,
+                    patch
+                );
             }
 
             if(stormDamageImpact || stormDeathImpact){

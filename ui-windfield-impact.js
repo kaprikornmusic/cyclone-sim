@@ -2028,13 +2028,36 @@ UI.init = function(){
                 line(lBound,bBound,lBound,tBound);
                 textSize(13);
                 let M = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-                for(let i=0;i<months;i++){
+                let yearStartTick = UI.viewBasin.tickFromMoment(
+                    moment.utc([target,0,1]).startOf('day')
+                );
+                let yearEndTick = UI.viewBasin.tickFromMoment(
+                    moment.utc([target+1,0,1]).startOf('day')
+                );
+                for(let i=0;i<12;i++){
+                    let monthStartTick = UI.viewBasin.tickFromMoment(
+                        moment.utc([target,i,1]).startOf('day')
+                    );
+                    let monthEndMoment =
+                        i===11 ?
+                            moment.utc([target+1,0,1]).startOf('day') :
+                            moment.utc([target,i+1,1]).startOf('day');
+                    let monthEndTick =
+                        UI.viewBasin.tickFromMoment(monthEndMoment);
+                    let x0 = map(
+                        monthEndTick,
+                        yearStartTick,yearEndTick,
+                        lBound,rBound,true
+                    );
+                    let x1 = map(
+                        (monthStartTick+monthEndTick)/2,
+                        yearStartTick,yearEndTick,
+                        lBound,rBound,true
+                    );
                     stroke(COLORS.UI.text);
-                    let x0 = map(i+1,0,months,lBound,rBound);
-                    let x1 = map(i+0.5,0,months,lBound,rBound);
                     line(x0,bBound,x0,tBound);
                     noStroke();
-                    text(M[(i+sMonth)%12],x1,bBound+BOX_HEIGHT*0.02);
+                    text(M[i],x1,bBound+BOX_HEIGHT*0.02);
                 }
                 noStroke();
                 for(let i=0;i<parts.length;i++){

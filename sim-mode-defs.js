@@ -1396,56 +1396,73 @@ STORM_ALGORITHM[SIM_MODE_NORMAL].core = function(sys,u){
     }
 
     if(sys.type===TROP && sys.windSpeed>=88){
-        // Major-hurricane entry is now environment-gated instead of relying
-        // only on a small continuous brake. This prevents brief one-advisory
-        // crossings of 96 kt from making too many storms count as majors.
-        let majorEnvironment =
-            map(SST,26.5,30.5,0,1,true) *
-            map(moisture,0.50,0.82,0,1,true) *
-            map(shear,16,2,0,1,true) *
-            map(sys.organization,0.74,0.98,0,1,true);
+        // Moderate major-hurricane gate. Use a geometric mean rather than a
+        // straight product so a broadly favorable environment can support a
+        // major hurricane without requiring every ingredient to be near-perfect.
+        let majorSst =
+            map(SST,25.2,30.2,0,1,true);
+        let majorMoisture =
+            map(moisture,0.38,0.78,0,1,true);
+        let majorShear =
+            map(shear,24,3,0,1,true);
+        let majorOrganization =
+            map(sys.organization,0.60,0.96,0,1,true);
+
+        let majorEnvironment = pow(
+            majorSst*
+            majorMoisture*
+            majorShear*
+            majorOrganization,
+            0.25
+        );
 
         let originalWind = sys.windSpeed;
+        const MAJOR_ENV_THRESHOLD = 0.62;
 
-        // Below this environmental threshold, keep the cyclone in the
-        // upper-Cat-2 range. This is a conditional ceiling, not a global cap:
-        // a better environment immediately allows the storm to intensify.
-        if(majorEnvironment<0.58 && sys.windSpeed>=95.5){
+        // Marginal environments still hold storms just below the 96 kt major
+        // threshold, but the threshold is now reachable under realistically
+        // favorable rather than nearly perfect conditions.
+        if(
+            majorEnvironment<MAJOR_ENV_THRESHOLD &&
+            sys.windSpeed>=95.5
+        ){
             sys.windSpeed = 95.4;
         }else{
-            // Once the environment is good enough for a major, open the
-            // allowable intensity progressively. Marginal major environments
-            // favor low-end Cat 3; elite environments can still support Cat 5.
+            // The ceiling opens gradually: a just-qualified environment
+            // favors low-end Cat 3, while increasingly favorable conditions
+            // permit Cat 4 and rare Cat 5 intensity.
             let environmentalCeiling = map(
                 majorEnvironment,
-                0.58,1,
-                101,155,
+                MAJOR_ENV_THRESHOLD,1,
+                103,155,
                 true
             );
 
             if(sys.windSpeed>environmentalCeiling){
                 let excess = sys.windSpeed-environmentalCeiling;
-                sys.windSpeed -= max(0.20,0.72*excess);
+                sys.windSpeed -= max(0.12,0.52*excess);
             }
 
-            // Additional high-end damping makes Cat 4/5 less persistent
-            // unless the environment is near the top of the scale.
-            if(sys.windSpeed>=110){
+            if(sys.windSpeed>=115){
                 let extremeBrake =
-                    map(sys.windSpeed,110,155,0.04,0.32,true) *
-                    map(majorEnvironment,0.58,1,1.00,0.30,true);
+                    map(sys.windSpeed,115,155,0.025,0.20,true) *
+                    map(
+                        majorEnvironment,
+                        MAJOR_ENV_THRESHOLD,1,
+                        0.85,0.22,true
+                    );
                 sys.windSpeed -= extremeBrake;
             }
         }
 
         let removedWind = max(0,originalWind-sys.windSpeed);
         if(removedWind>0){
-            // Feed the adjustment back into pressure and organization so the
-            // default core does not simply restore the excess next hour.
-            sys.pressure += 0.75*removedWind;
+            // Lighter feedback than the previous over-restrictive gate so a
+            // storm can resume intensifying when its environment improves.
+            sys.pressure += 0.35*removedWind;
             sys.organization = constrain(
                 sys.organization-
-                0.0025*removedWind*(1-majorEnvironment),
+                0.0010*removedWind*(1-majorEnvironment),
                 0,1
             );
         }

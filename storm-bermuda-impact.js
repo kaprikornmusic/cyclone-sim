@@ -444,35 +444,7 @@ class Storm{
 
                     }
 
-                    if(selectedStorm===this){
-                        tracks.push();
-                        tracks.textSize(9);
-                        tracks.textStyle(NORMAL);
-                        tracks.fill(255);
-                        tracks.stroke(0);
-                        tracks.strokeWeight(3);
 
-                        for(let n=0;n<this.record.length;n++){
-                            let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                            let adv = this.record[n];
-                            if(isPostTropicalRecord(adv,t))
-                                break;
-
-                            let pos = adv.pos;
-                            let label = adv.coord().format(1);
-                            let drawLeft = pos.x > WIDTH-90;
-                            let labelX = pos.x + (drawLeft ? -6 : 6);
-                            let labelY = pos.y + (n%2===0 ? -10 : 10);
-
-                            if(pos.y<14) labelY = pos.y+10;
-                            else if(pos.y>HEIGHT-14) labelY = pos.y-10;
-
-                            tracks.textAlign(drawLeft ? RIGHT : LEFT,CENTER);
-                            tracks.text(label,labelX,labelY);
-                        }
-
-                        tracks.pop();
-                    }
                 }
             }
             if(selectedStorm===this && this.basin.viewingPresent() && this.current){

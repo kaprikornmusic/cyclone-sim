@@ -388,10 +388,21 @@ class Storm{
                 );
             };
 
+            const detailedTrackMode =
+                this.basin.actMode===SIM_MODE_NORMAL ||
+                this.basin.actMode===SIM_MODE_WILD ||
+                this.basin.actMode===SIM_MODE_EXPERIMENTAL;
+
             const activeTropicalWave =
                 this.current &&
                 this.current.type===TROPWAVE &&
-                this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD;
+                (
+                    this.basin.actMode===SIM_MODE_NORMAL ?
+                        this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD :
+                    detailedTrackMode ?
+                        true :
+                        this.current.windSpeed>=TROPWAVE_MIN_WIND_THRESHOLD
+                );
 
             if(this.inBasinTC || activeTropicalWave || simSettings.trackMode===1){
                 if(newestSegment){

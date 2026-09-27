@@ -346,6 +346,79 @@ class Storm{
                 tracks.pop();
             };
 
+            const landAtTrackPos = (pos)=>{
+                let c = Coordinate.convertFromXY(
+                    this.basin.mapType,
+                    pos.x,
+                    pos.y
+                );
+                return land.get(c)>0;
+            };
+
+            const findLandfallPoints = (a,b)=>{
+                // Advisory fixes are six hours apart, so scan along the segment
+                // and refine every water -> land crossing to place the marker
+                // close to the coastline instead of at the next inland fix.
+                const STEPS = 32;
+                const REFINE_STEPS = 7;
+                let points = [];
+                let prevFrac = 0;
+                let prevLand = landAtTrackPos(a);
+
+                for(let i=1;i<=STEPS;i++){
+                    let frac = i/STEPS;
+                    let pos = {
+                        x: lerp(a.x,b.x,frac),
+                        y: lerp(a.y,b.y,frac)
+                    };
+                    let currLand = landAtTrackPos(pos);
+
+                    if(!prevLand && currLand){
+                        let lo = prevFrac;
+                        let hi = frac;
+
+                        for(let j=0;j<REFINE_STEPS;j++){
+                            let mid = (lo+hi)/2;
+                            let midPos = {
+                                x: lerp(a.x,b.x,mid),
+                                y: lerp(a.y,b.y,mid)
+                            };
+
+                            if(landAtTrackPos(midPos))
+                                hi = mid;
+                            else
+                                lo = mid;
+                        }
+
+                        points.push({
+                            x: lerp(a.x,b.x,hi),
+                            y: lerp(a.y,b.y,hi)
+                        });
+                    }
+
+                    prevFrac = frac;
+                    prevLand = currLand;
+                }
+
+                return points;
+            };
+
+            const drawLandfallMarker = (pos)=>{
+                const r = 3;
+
+                tracks.push();
+                tracks.stroke(0,100,100);
+                tracks.strokeWeight(1.5);
+                tracks.line(pos.x-r,pos.y-r,pos.x+r,pos.y+r);
+                tracks.line(pos.x-r,pos.y+r,pos.x+r,pos.y-r);
+                tracks.pop();
+            };
+
+            const drawLandfallsForSegment = (a,b)=>{
+                for(let p of findLandfallPoints(a,b))
+                    drawLandfallMarker(p);
+            };
+
             // Season Summary uses the storm's complete advisory record from
             // birth onward. This deliberately bypasses the live-track gates so
             // precursor tropical-wave points are never dropped. After the
@@ -373,6 +446,12 @@ class Storm{
 
                     for(let n=0;n<=lastPoint;n++)
                         drawTrackPoint(this.record[n]);
+
+                    for(let n=0;n<lastPoint;n++)
+                        drawLandfallsForSegment(
+                            this.record[n].pos,
+                            this.record[n+1].pos
+                        );
                 }
 
                 return;
@@ -406,6 +485,7 @@ class Storm{
                             drawTrackLine(adv.pos,nextAdv.pos);
                             drawTrackPoint(adv);
                             drawTrackPoint(nextAdv);
+                            drawLandfallsForSegment(adv.pos,nextAdv.pos);
                         }
                     }
                 }else if(this.aliveAt(viewTick) || simSettings.trackMode===2 || selectedStorm===this){
@@ -434,6 +514,12 @@ class Storm{
                     if(pointEnd>=0){
                         for(let n=0;n<=pointEnd;n++)
                             drawTrackPoint(this.record[n]);
+
+                        for(let n=0;n<pointEnd;n++)
+                            drawLandfallsForSegment(
+                                this.record[n].pos,
+                                this.record[n+1].pos
+                            );
                     }
 
                     if(selectedStorm===this){

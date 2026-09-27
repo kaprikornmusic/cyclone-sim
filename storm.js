@@ -407,7 +407,7 @@ class Storm{
                 const r = 3;
 
                 tracks.push();
-                tracks.stroke(0,100,100);
+                tracks.stroke(255,0,0);
                 tracks.strokeWeight(1.5);
                 tracks.line(pos.x-r,pos.y-r,pos.x+r,pos.y+r);
                 tracks.line(pos.x-r,pos.y+r,pos.x+r,pos.y-r);

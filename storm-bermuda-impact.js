@@ -22,6 +22,7 @@ class Storm{
         this.exitTime = undefined;                                  // tick degenerated in/left basin as a TC
         this.dissipationTime = undefined;                           // tick degenerated/dissipated as a TC
         this.deathTime = undefined;                                 // tick completely dissipated/left map
+        this.trackCutoffTime = undefined;                           // permanent track stop after a named storm falls below 20 mph
 
         this.record = [];
         this.peak = undefined;
@@ -58,6 +59,61 @@ class Storm{
         }
 
         return false;
+    }
+
+    hasNamedDesignation(){
+        for(let group of [
+            this.designations.primary,
+            this.designations.secondary
+        ]){
+            for(let d of group){
+                if(d instanceof Designation && d.isName())
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    firstNamedTick(){
+        let first;
+        for(let group of [
+            this.designations.primary,
+            this.designations.secondary
+        ]){
+            for(let d of group){
+                if(!(d instanceof Designation) || !d.isName())
+                    continue;
+                for(let t of d.effectiveTicks){
+                    if(
+                        typeof t==='number' &&
+                        (first===undefined || t<first)
+                    ) first = t;
+                }
+            }
+        }
+        return first;
+    }
+
+    getTrackCutoffTime(){
+        // New simulations remember the exact hourly cutoff. Older saves do
+        // not have that field, so reconstruct the best available cutoff from
+        // the first sub-20-mph advisory after the storm received a name.
+        if(this.trackCutoffTime!==undefined)
+            return this.trackCutoffTime;
+
+        let namedTick = this.firstNamedTick();
+        if(namedTick===undefined)
+            return undefined;
+
+        for(let i=0;i<this.record.length;i++){
+            let t = this.get_tick_from_record_index(i);
+            if(
+                t>=namedTick &&
+                this.record[i].windSpeed<TROPWAVE_MIN_WIND_THRESHOLD
+            ) return t;
+        }
+
+        return undefined;
     }
 
     getStormDataByTick(t,allowCurrent){
@@ -340,7 +396,7 @@ class Storm{
                         tracks.ellipse(pos.x,pos.y,r*2,r*2);
                         break;
                     case EXTROP:
-                        // Pre-tropical extratropical phase: small white plus.
+                        // Extratropical/post-tropical phase: small white plus.
                         tracks.noFill();
                         tracks.stroke(255);
                         tracks.strokeWeight(1);
@@ -352,38 +408,12 @@ class Storm{
                 tracks.pop();
             };
 
-            // Season Summary uses the storm's complete advisory record from
-            // birth onward. This deliberately bypasses the live-track gates so
-            // precursor tropical-wave points are never dropped. After the
-            // system has once become tropical/subtropical, stop immediately
-            // before the first EXTROP advisory; remnant TROPWAVE records remain.
-            if(simSettings.trackMode===2){
-                let seenCyclone = false;
-                let lastPoint = -1;
+            const namedStorm = this.hasNamedDesignation();
+            const namedTick = this.firstNamedTick();
+            const trackCutoffTick = this.getTrackCutoffTime();
 
-                for(let n=0;n<this.record.length;n++){
-                    let adv = this.record[n];
-
-                    if(tropOrSub(adv.type))
-                        seenCyclone = true;
-
-                    if(seenCyclone && adv.type===EXTROP)
-                        break;
-
-                    lastPoint = n;
-                }
-
-                if(lastPoint>=0){
-                    for(let n=0;n<lastPoint;n++)
-                        drawTrackLine(this.record[n].pos,this.record[n+1].pos);
-
-                    for(let n=0;n<=lastPoint;n++)
-                        drawTrackPoint(this.record[n]);
-
-                }
-
-                return;
-            }
+            const recordTick = n=>
+                (n+ceil(this.birthTime/ADVISORY_TICKS))*ADVISORY_TICKS;
 
             const isPostTropicalRecord = (adv,t)=>{
                 return (
@@ -394,6 +424,51 @@ class Storm{
                 );
             };
 
+            // Named storms keep their track after becoming post-tropical.
+            // Unnamed cyclones preserve the older behavior and stop at the
+            // first post-tropical/extratropical advisory.
+            const trackStopsAt = (adv,t)=>{
+                if(
+                    trackCutoffTick!==undefined &&
+                    t>=trackCutoffTick
+                ) return true;
+
+                return (
+                    !namedStorm &&
+                    isPostTropicalRecord(adv,t)
+                );
+            };
+
+            // Season Summary starts at the precursor stage, includes the
+            // post-tropical phase of named storms, and permanently stops once
+            // the named storm has fallen below 20 mph.
+            if(simSettings.trackMode===2){
+                let lastPoint = -1;
+
+                for(let n=0;n<this.record.length;n++){
+                    let adv = this.record[n];
+                    let t = recordTick(n);
+
+                    if(trackStopsAt(adv,t))
+                        break;
+
+                    lastPoint = n;
+                }
+
+                if(lastPoint>=0){
+                    for(let n=0;n<lastPoint;n++)
+                        drawTrackLine(
+                            this.record[n].pos,
+                            this.record[n+1].pos
+                        );
+
+                    for(let n=0;n<=lastPoint;n++)
+                        drawTrackPoint(this.record[n]);
+                }
+
+                return;
+            }
+
             const activeTropicalWave =
                 this.current &&
                 this.current.type===TROPWAVE &&
@@ -401,50 +476,104 @@ class Storm{
 
             if(this.inBasinTC || activeTropicalWave || simSettings.trackMode===1){
                 if(newestSegment){
-                    if(this.record.length>1 && (selectedStorm===this || selectedStorm===undefined)){
-                        let t = (this.record.length-2)*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                        let adv = this.record[this.record.length-2];
-                        let nextAdv = this.record[this.record.length-1];
+                    if(
+                        this.record.length>1 &&
+                        (selectedStorm===this || selectedStorm===undefined)
+                    ){
+                        let n = this.record.length-2;
+                        let t = recordTick(n);
+                        let nextT = recordTick(n+1);
+                        let adv = this.record[n];
+                        let nextAdv = this.record[n+1];
 
-                        // Keep precursor and remnant-low track segments, but stop
-                        // before the first post-tropical/extratropical advisory.
-                        let nextT = t + ADVISORY_TICKS;
-                        if(!isPostTropicalRecord(adv,t) && !isPostTropicalRecord(nextAdv,nextT)){
+                        if(
+                            !trackStopsAt(adv,t) &&
+                            !trackStopsAt(nextAdv,nextT)
+                        ){
                             drawTrackLine(adv.pos,nextAdv.pos);
                             drawTrackPoint(adv);
                             drawTrackPoint(nextAdv);
                         }
                     }
-                }else if(this.aliveAt(viewTick) || simSettings.trackMode===2 || selectedStorm===this){
+                }else if(
+                    this.aliveAt(viewTick) ||
+                    simSettings.trackMode===2 ||
+                    selectedStorm===this
+                ){
                     let lastPoint = -1;
 
-                    // Draw the thin white track first so the six-hour markers
-                    // sit cleanly on top.
+                    // Draw until the permanent weak-wind cutoff. Named storms
+                    // are allowed to continue through EXTROP/post-tropical
+                    // records; unnamed cyclones still stop at transition.
                     for(let n=0;n<this.record.length-1;n++){
-                        let t = n*ADVISORY_TICKS+ceil(this.birthTime/ADVISORY_TICKS)*ADVISORY_TICKS;
-                        let nextT = t + ADVISORY_TICKS;
+                        let t = recordTick(n);
+                        let nextT = recordTick(n+1);
                         let adv = this.record[n];
                         let nextAdv = this.record[n+1];
 
-                        // Remnant lows are TROPWAVE and remain on the track.
-                        // Stop only when the cyclone becomes post-tropical EXTROP.
-                        if(isPostTropicalRecord(adv,t) || isPostTropicalRecord(nextAdv,nextT))
-                            break;
+                        if(
+                            trackStopsAt(adv,t) ||
+                            trackStopsAt(nextAdv,nextT)
+                        ) break;
 
                         drawTrackLine(adv.pos,nextAdv.pos);
                         lastPoint = n+1;
                     }
 
-                    // Every record is a six-hour advisory, so mark each one.
-                    // A brand-new system with only one record still gets a marker.
-                    let pointEnd = lastPoint>=0 ? lastPoint : this.record.length-1;
+                    let pointEnd =
+                        lastPoint>=0 ?
+                            lastPoint :
+                            (
+                                this.record.length &&
+                                !trackStopsAt(
+                                    this.record[0],
+                                    recordTick(0)
+                                ) ?
+                                    0 :
+                                    -1
+                            );
+
                     if(pointEnd>=0){
                         for(let n=0;n<=pointEnd;n++)
                             drawTrackPoint(this.record[n]);
-
                     }
 
+                    if(selectedStorm===this){
+                        tracks.push();
+                        tracks.textSize(9);
+                        tracks.textStyle(NORMAL);
+                        tracks.fill(255);
+                        tracks.stroke(0);
+                        tracks.strokeWeight(3);
 
+                        for(let n=0;n<this.record.length;n++){
+                            let t = recordTick(n);
+                            let adv = this.record[n];
+
+                            if(trackStopsAt(adv,t))
+                                break;
+
+                            let pos = adv.pos;
+                            let label = adv.coord().format(1);
+                            let drawLeft = pos.x > WIDTH-90;
+                            let labelX = pos.x + (drawLeft ? -6 : 6);
+                            let labelY =
+                                pos.y + (n%2===0 ? -10 : 10);
+
+                            if(pos.y<14)
+                                labelY = pos.y+10;
+                            else if(pos.y>HEIGHT-14)
+                                labelY = pos.y-10;
+
+                            tracks.textAlign(
+                                drawLeft ? RIGHT : LEFT,
+                                CENTER
+                            );
+                            tracks.text(label,labelX,labelY);
+                        }
+
+                        tracks.pop();
+                    }
                 }
             }
             if(selectedStorm===this && this.basin.viewingPresent() && this.current){
@@ -722,6 +851,7 @@ class Storm{
         for(let p of [
             'id',
             'birthTime',
+            'trackCutoffTime',
             'deaths',
             'damage',
             'landfalls'
@@ -755,6 +885,7 @@ class Storm{
                 for(let p of [
                     'id',
                     'birthTime',
+                    'trackCutoffTime',
                     'deaths',
                     'damage',
                     'landfalls'
@@ -1220,6 +1351,21 @@ class ActiveSystem extends StormData{
             STORM_ALGORITHM[basin.actMode].typeDetermination(this,u);
         else
             STORM_ALGORITHM.defaults.typeDetermination(this,u);
+
+        // Once a storm has received a name, the displayed track is allowed
+        // to continue through its post-tropical phase. If its raw hourly wind
+        // ever falls below 20 mph, permanently latch the track off; later
+        // re-intensification must not restart it.
+        let trackedStorm = this.fetchStorm();
+        if(
+            trackedStorm &&
+            trackedStorm.trackCutoffTime===undefined &&
+            trackedStorm.hasNamedDesignation() &&
+            this.windSpeed<TROPWAVE_MIN_WIND_THRESHOLD
+        ){
+            trackedStorm.trackCutoffTime = basin.tick;
+            refreshTracks(true);
+        }
 
         // Hard 20 mph tropical-wave cutoff for Normal, Wild, and Experimental:
         // dissipate immediately in the same tick that a wave/low falls below it.

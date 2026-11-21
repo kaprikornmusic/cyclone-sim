@@ -1831,6 +1831,20 @@ UI.init = function(){
         }
     });
     
+    stormInfoPanel.append(false,30,stormInfoPanel.height-81,stormInfoPanel.width-60,24,function(s){ // show storm advisory data
+        let target = stormInfoPanel.target;
+        s.button(
+            "Show Storm Data",
+            false,
+            15,
+            !(target instanceof Storm)
+        );
+    },function(){
+        let target = stormInfoPanel.target;
+        if(target instanceof Storm)
+            showStormData(target);
+    });
+
     stormInfoPanel.append(false,30,stormInfoPanel.height-27,stormInfoPanel.width-60,24,function(s){ // show season summary timeline button
         s.button("View Timeline",false,15);
     },function(){
@@ -2535,6 +2549,282 @@ function changeViewTick(t){
     }else UI.viewBasin.fetchSeason(viewTick,true,false,s=>{
         requisites(s);
     });
+}
+
+
+function stormDataDesignationAtTick(storm,tick,wantName){
+    let all = [
+        ...storm.designations.primary,
+        ...storm.designations.secondary
+    ].filter(d=>
+        d instanceof Designation &&
+        (wantName ? d.isName() : !d.isName())
+    );
+
+    if(UI.viewBasin && UI.viewBasin.mainSubBasin===EARTH_SB_IDS.atl){
+        let atlantic = all.filter(d=>
+            d.subBasin===EARTH_SB_IDS.atl ||
+            d.subBasin===EARTH_SB_IDS.atlland
+        );
+        if(atlantic.length)
+            all = atlantic;
+    }
+
+    let active = all.filter(d=>d.activeAt(tick));
+    let pool = active.length ?
+        active :
+        all.filter(d=>
+            d.effectiveTicks.some(t=>
+                typeof t==='number' && t<=tick
+            )
+        );
+
+    if(!pool.length)
+        return '';
+
+    pool.sort((a,b)=>{
+        let latest = d=>{
+            let best = -Infinity;
+            for(let t of d.effectiveTicks)
+                if(typeof t==='number' && t<=tick && t>best)
+                    best = t;
+            return best;
+        };
+        return latest(a)-latest(b);
+    });
+
+    let value = pool[pool.length-1].value || '';
+    if(
+        !wantName &&
+        UI.viewBasin &&
+        UI.viewBasin.mainSubBasin===EARTH_SB_IDS.atl
+    ) value = value.replace(/H$/,'L');
+
+    return value;
+}
+
+function stormDataStatus(storm,adv,tick){
+    let name = stormDataDesignationAtTick(storm,tick,true);
+    let number = stormDataDesignationAtTick(storm,tick,false);
+    let suffix = value=>value ? ' ' + value : '';
+    let hasBeenTC =
+        storm.formationTime!==undefined &&
+        tick>=storm.formationTime;
+
+    switch(adv.type){
+        case TROPWAVE:
+            return 'Unnamed Tropical Wave';
+
+        case SUBTROP:
+            if(adv.windSpeed<34)
+                return 'Subtropical Depression' +
+                    suffix(number || name);
+            return 'Subtropical Storm' +
+                suffix(name || number);
+
+        case TROP:
+            if(adv.windSpeed<34)
+                return 'Tropical Depression' +
+                    suffix(number);
+            if(adv.windSpeed<64)
+                return 'Tropical Storm' +
+                    suffix(name || number);
+            if(adv.windSpeed<96)
+                return 'Hurricane' +
+                    suffix(name || number);
+            return 'Major Hurricane' +
+                suffix(name || number);
+
+        case EXTROP:
+            if(hasBeenTC)
+                return 'Post-Tropical Cyclone' +
+                    suffix(name || number);
+            return 'Extratropical Cyclone' +
+                suffix(name || number);
+    }
+
+    return 'Unknown Cyclone';
+}
+
+function buildStormDataText(storm){
+    if(!(storm instanceof Storm))
+        return '';
+
+    let lines = [];
+    for(let i=0;i<storm.record.length;i++){
+        let adv = storm.record[i];
+        let tick = storm.get_tick_from_record_index(i);
+        let m = UI.viewBasin.tickMoment(tick);
+        let c = adv.coord();
+
+        let time =
+            m.format('HH') + 'z ' +
+            m.format('MMM DD');
+
+        let windMph =
+            Math.round((adv.windSpeed*1.15078)/5)*5;
+
+        let latitude =
+            Math.abs(c.latitude).toFixed(1) +
+            (c.latitude>=0 ? 'N' : 'S');
+
+        let longitude =
+            Math.abs(c.longitude).toFixed(1) +
+            (c.longitude>=0 ? 'E' : 'W');
+
+        let status = stormDataStatus(storm,adv,tick);
+
+        lines.push(
+            `${time}: ${windMph}mph/${Math.round(adv.pressure)}mb | ` +
+            `${latitude} ${longitude} | ${status}`
+        );
+    }
+
+    return lines.join('\n');
+}
+
+function showStormData(storm){
+    if(!(storm instanceof Storm))
+        return;
+
+    let old = document.getElementById('storm-data-overlay');
+    if(old)
+        old.remove();
+
+    let textValue = buildStormDataText(storm);
+
+    let overlay = document.createElement('div');
+    overlay.id = 'storm-data-overlay';
+    Object.assign(overlay.style,{
+        position:'fixed',
+        left:'0',
+        top:'0',
+        width:'100vw',
+        height:'100vh',
+        background:'rgba(0,0,0,0.72)',
+        zIndex:'99999',
+        display:'flex',
+        alignItems:'center',
+        justifyContent:'center',
+        padding:'20px',
+        boxSizing:'border-box'
+    });
+
+    let box = document.createElement('div');
+    Object.assign(box.style,{
+        width:'min(1000px, 96vw)',
+        height:'min(760px, 88vh)',
+        background:'#161616',
+        border:'1px solid #777',
+        borderRadius:'8px',
+        padding:'14px',
+        boxSizing:'border-box',
+        display:'flex',
+        flexDirection:'column',
+        gap:'10px',
+        color:'white',
+        fontFamily:'Arial, sans-serif'
+    });
+
+    let title = document.createElement('div');
+    title.textContent =
+        'Storm Data — ' +
+        (storm.getNameByTick(-1) || 'Unnamed');
+    Object.assign(title.style,{
+        fontSize:'18px',
+        fontWeight:'bold'
+    });
+
+    let textarea = document.createElement('textarea');
+    textarea.value = textValue;
+    textarea.readOnly = true;
+    textarea.spellcheck = false;
+    Object.assign(textarea.style,{
+        flex:'1',
+        width:'100%',
+        resize:'none',
+        boxSizing:'border-box',
+        background:'#0d0d0d',
+        color:'#f2f2f2',
+        border:'1px solid #666',
+        borderRadius:'4px',
+        padding:'10px',
+        fontFamily:'monospace',
+        fontSize:'14px',
+        lineHeight:'1.45',
+        whiteSpace:'pre',
+        overflow:'auto'
+    });
+
+    let controls = document.createElement('div');
+    Object.assign(controls.style,{
+        display:'flex',
+        justifyContent:'flex-end',
+        gap:'8px'
+    });
+
+    let copyButton = document.createElement('button');
+    copyButton.textContent = 'Copy All';
+    let closeButton = document.createElement('button');
+    closeButton.textContent = 'Close';
+
+    for(let button of [copyButton,closeButton]){
+        Object.assign(button.style,{
+            padding:'8px 16px',
+            border:'1px solid #888',
+            borderRadius:'4px',
+            background:'#333',
+            color:'white',
+            cursor:'pointer',
+            fontSize:'14px'
+        });
+    }
+
+    copyButton.onclick = ()=>{
+        let done = ()=>{
+            copyButton.textContent = 'Copied!';
+            setTimeout(()=>{
+                if(document.body.contains(copyButton))
+                    copyButton.textContent = 'Copy All';
+            },1200);
+        };
+
+        if(navigator.clipboard && navigator.clipboard.writeText){
+            navigator.clipboard.writeText(textValue)
+                .then(done)
+                .catch(()=>{
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand('copy');
+                    done();
+                });
+        }else{
+            textarea.focus();
+            textarea.select();
+            document.execCommand('copy');
+            done();
+        }
+    };
+
+    let close = ()=>overlay.remove();
+    closeButton.onclick = close;
+    overlay.onclick = e=>{
+        if(e.target===overlay)
+            close();
+    };
+
+    for(let eventName of ['keydown','keyup','keypress'])
+        overlay.addEventListener(
+            eventName,
+            e=>e.stopPropagation()
+        );
+
+    controls.append(copyButton,closeButton);
+    box.append(title,textarea,controls);
+    overlay.append(box);
+    document.body.appendChild(overlay);
+
+    textarea.focus();
 }
 
 // function deviceTurned(){
